@@ -295,7 +295,7 @@ def main():
     conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
 
-    create_tables(conn, cur)
+    #create_tables(conn, cur)
 
     # MET example 
     raw_met_data = get_met_data(target_count=5)
