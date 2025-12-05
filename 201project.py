@@ -5,6 +5,7 @@ import requests
 import json
 import sqlite3
 import time
+import random
 
 def create_tables(conn, cur):
     # ---------------------------
@@ -95,15 +96,25 @@ def create_tables(conn, cur):
     print("Tables created successfully!")
 
 
-def get_met_data(target_count=100):
+def get_met_data(target_count=80):
     # 1. get all object IDs
     ids_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
-    ids_data = requests.get(ids_url, timeout=10).json()
+    
+    print("Requesting MET object ID list...")
 
+    try:
+        response = requests.get(ids_url, timeout=10)
+        ids_data = response.json()
+    except Exception as e:
+        print("Error fetching object IDs from MET:", e)
+        return []
+    
     if "objectIDs" not in ids_data:
         print("Error: MET did not return object IDs:", ids_data)
         return []
-
+    
+    required_fields = ["title", "artistDisplayName", "medium", 
+                           "classification", "culture", "objectDate"]
     object_ids = ids_data["objectIDs"]
 
     raw_objects = []
@@ -123,19 +134,27 @@ def get_met_data(target_count=100):
             continue
 
         # check if data is valid
-        if not isinstance(data, dict):
+        if not all(data.get(field) for field in required_fields):
             continue
-        if "title" not in data:
+
+        if not all(data.get(f) for f in required_fields):
             continue
 
         raw_objects.append(data)
         count += 1
 
+    print(f"Fetched {len(raw_objects)} objects from The Met API.")
     return raw_objects
+    
 
 
 def insert_met_data(conn, cur, raw_data):
     for item in raw_data:
+        required_fields = ["title", "artistDisplayName", "medium", 
+                           "classification", "culture", "objectDate"]
+        if any(not item.get(field) for field in required_fields):
+            continue  # skip items with missing required fields
+        
         # Insert into lookup tables and get their IDs
         museum_name = "The Met"
         cur.execute("INSERT OR IGNORE INTO museum (name) VALUES (?);", (museum_name,))
