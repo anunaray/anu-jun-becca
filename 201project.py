@@ -203,24 +203,113 @@ def insert_met_data(conn, cur, raw_data):
             medium_id, classification_id, culture_id, date_id
         ))  
 
+def get_harvard_data(api_key, target_count=25):
+    """
+    Fetch artwork metadata from the Harvard Art Museums API and normalize it
+    to match the MET schema used by insert_met_data().
+
+    Parameters
+    ----------
+    api_key : str
+        Your Harvard Art Museums API key.
+    target_count : int
+        Maximum number of records to return in this run.
+        (Keep this <= 25 to satisfy the project requirement.)
+
+    Returns
+    -------
+    list[dict]
+        List of normalized artwork dicts with keys:
+        objectID, title, artistDisplayName, medium,
+        classification, culture, objectDate
+    """
+    base_url = "https://api.harvardartmuseums.org/object"
+    # Harvard docs: all requests need `apikey`, `size`, optional `page` etc.
+    # We'll page until we hit target_count or run out of records.
+    params = {
+        "apikey": api_key,
+        "size": min(target_count, 25),  # don't grab more than we’ll store
+        "page": 1
+    }
+
+    print("Requesting Harvard Art Museums object list...")
+
+    raw_objects = []
+    required_fields = ["title", "artistDisplayName", "medium",
+                       "classification", "culture", "objectDate"]
+
+    while len(raw_objects) < target_count:
+        try:
+            response = requests.get(base_url, params=params, timeout=10)
+            data = response.json()
+        except Exception as e:
+            print("Error fetching data from Harvard Art Museums API:", e)
+            break
+
+        records = data.get("records", [])
+        if not records:
+            print("No more Harvard records returned.")
+            break
+
+        for rec in records:
+            # Derive artist name from people array if available
+            if rec.get("people"):
+                artist_name = rec["people"][0].get("name")
+            else:
+                artist_name = None
+
+            normalized = {
+                # Map Harvard fields -> MET-style keys your insert_met_data uses
+                "objectID": rec.get("objectid"),
+                "title": rec.get("title"),
+                "artistDisplayName": artist_name,
+                "medium": rec.get("medium"),
+                "classification": rec.get("classification"),
+                "culture": rec.get("culture"),
+                "objectDate": rec.get("dated")
+            }
+
+            # Make sure everything we care about is present and non-empty
+            if not all(normalized.get(f) for f in required_fields):
+                continue
+
+            raw_objects.append(normalized)
+
+            if len(raw_objects) >= target_count:
+                break
+
+        # Handle pagination
+        info = data.get("info", {})
+        current_page = info.get("page")
+        total_pages = info.get("pages")
+
+        if not current_page or not total_pages or current_page >= total_pages:
+            break
+
+        params["page"] = current_page + 1
+        # Tiny sleep if you want to be extra nice to the API
+        time.sleep(0.1)
+
+    print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
+    return raw_objects
 
 
 def main():
-    # 1. Connect to the database
     conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
 
-    # 2. Ensure tables exist
     create_tables(conn, cur)
-    
-    # 3. Get the raw data from the MET API
-    # I'll use 5 here, as per your previous example
-    raw_met_data = get_met_data(target_count=5) 
 
-    # 4. Insert the data into the tables
+    # MET example (you already have)
+    raw_met_data = get_met_data(target_count=5)
     insert_met_data(conn, cur, raw_met_data)
 
-    # 5. Close the database connection
+    # Harvard example
+    harvard_api_key = "YOUR_HARVARD_API_KEY_HERE"
+    raw_harvard_data = get_harvard_data(harvard_api_key, target_count=5)
+    insert_met_data(conn, cur, raw_harvard_data)
+
+    conn.commit()
     conn.close()
 
 if __name__ == "__main__":
