@@ -99,6 +99,9 @@ def create_tables(conn, cur):
 
 def get_met_data(target_count=80):
     # 1. get all object IDs
+    pass
+    
+    
     ids_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
     
     print("Requesting MET object ID list...")
@@ -285,6 +288,7 @@ def get_harvard_data(target_count=25):
     print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
     return raw_objects
 
+def get_coop_data(target_count=80):
 def get_aic_data(target_count=25):
     """
     Fetch artwork metadata from the Art Institute of Chicago API
