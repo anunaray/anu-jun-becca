@@ -203,18 +203,10 @@ def insert_met_data(conn, cur, raw_data):
             medium_id, classification_id, culture_id, date_id
         ))  
 
-def get_harvard_data(api_key, target_count=25):
+def get_harvard_data(target_count=25):
     """
     Fetch artwork metadata from the Harvard Art Museums API and normalize it
     to match the MET schema used by insert_met_data().
-
-    Parameters
-    ----------
-    api_key : str
-        Your Harvard Art Museums API key.
-    target_count : int
-        Maximum number of records to return in this run.
-        (Keep this <= 25 to satisfy the project requirement.)
 
     Returns
     -------
@@ -223,12 +215,13 @@ def get_harvard_data(api_key, target_count=25):
         objectID, title, artistDisplayName, medium,
         classification, culture, objectDate
     """
+
+    api_key = "58f23874-0244-4cb8-b162-ae364e69d3e0"
+
     base_url = "https://api.harvardartmuseums.org/object"
-    # Harvard docs: all requests need `apikey`, `size`, optional `page` etc.
-    # We'll page until we hit target_count or run out of records.
     params = {
         "apikey": api_key,
-        "size": min(target_count, 25),  # don't grab more than we’ll store
+        "size": min(target_count, 25),   # Harvard max 100; project max 25
         "page": 1
     }
 
@@ -243,7 +236,7 @@ def get_harvard_data(api_key, target_count=25):
             response = requests.get(base_url, params=params, timeout=10)
             data = response.json()
         except Exception as e:
-            print("Error fetching data from Harvard Art Museums API:", e)
+            print("Error fetching Harvard data:", e)
             break
 
         records = data.get("records", [])
@@ -252,14 +245,14 @@ def get_harvard_data(api_key, target_count=25):
             break
 
         for rec in records:
-            # Derive artist name from people array if available
+            # Extract artist name from "people" list if available
             if rec.get("people"):
                 artist_name = rec["people"][0].get("name")
             else:
                 artist_name = None
 
+            # Normalize fields to match MET structure
             normalized = {
-                # Map Harvard fields -> MET-style keys your insert_met_data uses
                 "objectID": rec.get("objectid"),
                 "title": rec.get("title"),
                 "artistDisplayName": artist_name,
@@ -269,7 +262,6 @@ def get_harvard_data(api_key, target_count=25):
                 "objectDate": rec.get("dated")
             }
 
-            # Make sure everything we care about is present and non-empty
             if not all(normalized.get(f) for f in required_fields):
                 continue
 
@@ -278,7 +270,7 @@ def get_harvard_data(api_key, target_count=25):
             if len(raw_objects) >= target_count:
                 break
 
-        # Handle pagination
+        # Pagination handling
         info = data.get("info", {})
         current_page = info.get("page")
         total_pages = info.get("pages")
@@ -287,7 +279,6 @@ def get_harvard_data(api_key, target_count=25):
             break
 
         params["page"] = current_page + 1
-        # Tiny sleep if you want to be extra nice to the API
         time.sleep(0.1)
 
     print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
