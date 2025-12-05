@@ -1,6 +1,7 @@
 '''Anu, Jun, Becca
 SI 201 Museums Project'''
 
+
 import requests
 import json
 import sqlite3
@@ -146,6 +147,7 @@ def get_met_data(target_count=80):
     print(f"Fetched {len(raw_objects)} objects from The Met API.")
     return raw_objects
     
+
 def insert_met_data(conn, cur, raw_data):
     for item in raw_data:
         required_fields = ["title", "artistDisplayName", "medium", 
@@ -200,6 +202,7 @@ def insert_met_data(conn, cur, raw_data):
             original_id, museum_id, title_id, artist_id,
             medium_id, classification_id, culture_id, date_id
         ))  
+
 
 def get_harvard_data(target_count=25):
     """
@@ -282,9 +285,11 @@ def get_harvard_data(target_count=25):
     print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
     return raw_objects
 
+
 def get_coop_data():
     # Placeholder for Cooper Hewitt data fetching function
     pass
+
 
 def main():
     conn = sqlite3.connect("artmuseum.db")
@@ -292,16 +297,17 @@ def main():
 
     create_tables(conn, cur)
 
-    # MET example (you already have)
+    # MET example 
     raw_met_data = get_met_data(target_count=5)
     insert_met_data(conn, cur, raw_met_data)
 
     # Harvard example
-    raw_harvard_data = get_harvard_data(harvard_api_key, target_count=5)
+    raw_harvard_data = get_harvard_data(target_count=5)
     insert_met_data(conn, cur, raw_harvard_data)
 
     conn.commit()
     conn.close()
+
 
 if __name__ == "__main__":
     main()
