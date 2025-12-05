@@ -352,9 +352,101 @@ def get_aic_data(target_count=25):
     return raw_objects
 
 
-def get_coop_data():
-    # Placeholder for Cooper Hewitt data fetching function
-    pass
+def get_coop_data(target_count=25):
+    """
+    Fetch artwork metadata from the Cooper Hewitt API and normalize it
+    to match the MET schema used by insert_met_data().
+
+    Returns
+    -------
+    list[dict]
+        List of normalized artwork dicts with keys:
+        objectID, title, artistDisplayName, medium,
+        classification, culture, objectDate
+    """
+
+    access_token = "d53d099f0b54183fa59f1b54475e2489"
+
+    base_url = "https://api.collection.cooperhewitt.org/rest/"
+    params = {
+        "method": "cooperhewitt.objects.getRandom",
+        "access_token": access_token,
+        "has_image": 0  # we don't *need* images for this project
+    }
+
+    print("Requesting Cooper Hewitt random objects...")
+
+    raw_objects = []
+
+    # We’ll make sure these core fields exist (the others have safe defaults).
+    required_core_fields = ["objectID", "title", "artistDisplayName", "medium", "objectDate"]
+
+    while len(raw_objects) < target_count:
+        try:
+            resp = requests.get(base_url, params=params, timeout=10)
+            data = resp.json()
+        except Exception as e:
+            print("Error fetching Cooper Hewitt data:", e)
+            break
+
+        obj = data.get("object")
+        if not obj:
+            continue
+
+        # Try to get an artist / designer name from participants or people
+        artist_name = None
+        for key in ("participants", "people"):
+            people_list = obj.get(key)
+            if isinstance(people_list, list) and people_list:
+                person = people_list[0]
+                artist_name = (
+                    person.get("person_name")
+                    or person.get("name")
+                    or person.get("display_name")
+                )
+                if artist_name:
+                    break
+
+        # Normalize to MET-style keys so insert_met_data can reuse it
+        normalized = {
+            "objectID": obj.get("id"),
+            "title": obj.get("title") or "Unknown Title",
+            "artistDisplayName": artist_name or "Unknown Artist",
+            "medium": (
+                obj.get("medium")
+                or obj.get("medium_description")
+                or "Unknown Medium"
+            ),
+            # Cooper Hewitt uses "type" for kind of object; good enough as "classification"
+            "classification": (
+                obj.get("type")
+                or obj.get("type_name")
+                or "Unknown Classification"
+            ),
+            # Rough stand-in for "culture"
+            "culture": (
+                obj.get("woe:country")
+                or obj.get("country")
+                or "Unknown Culture"
+            ),
+            # Date fields vary widely; pick whatever exists
+            "objectDate": (
+                obj.get("date")
+                or obj.get("display_date")
+                or obj.get("year_start")
+                or "Unknown Date"
+            )
+        }
+
+        # Require the core fields to be present / non-empty
+        if not all(normalized.get(f) for f in required_core_fields):
+            continue
+
+        raw_objects.append(normalized)
+        time.sleep(0.1)  # be polite to the API
+
+    print(f"Fetched {len(raw_objects)} objects from the Cooper Hewitt API.")
+    return raw_objects
 
 
 def main():
@@ -363,17 +455,21 @@ def main():
 
     create_tables(conn, cur)
 
-    # MET example 
+    # MET
     raw_met_data = get_met_data(target_count=5)
     insert_met_data(conn, cur, raw_met_data)
 
-    # Harvard example
+    # Harvard
     raw_harvard_data = get_harvard_data(target_count=5)
     insert_met_data(conn, cur, raw_harvard_data)
 
-    # Art Institute of Chicago example
+    # Art Institute of Chicago (if you added this)
     raw_aic_data = get_aic_data(target_count=5)
     insert_met_data(conn, cur, raw_aic_data)
+
+    # Cooper Hewitt
+    raw_coop_data = get_coop_data(target_count=5)
+    insert_met_data(conn, cur, raw_coop_data)
 
     conn.commit()
     conn.close()
