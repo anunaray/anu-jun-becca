@@ -146,8 +146,6 @@ def get_met_data(target_count=80):
     print(f"Fetched {len(raw_objects)} objects from The Met API.")
     return raw_objects
     
-
-
 def insert_met_data(conn, cur, raw_data):
     for item in raw_data:
         required_fields = ["title", "artistDisplayName", "medium", 
@@ -293,6 +291,9 @@ def get_harvard_data(api_key, target_count=25):
     print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
     return raw_objects
 
+def get_coop_data():
+    # Placeholder for Cooper Hewitt data fetching function
+    pass
 
 def main():
     conn = sqlite3.connect("artmuseum.db")
