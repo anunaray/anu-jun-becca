@@ -1,6 +1,7 @@
 '''Anu, Jun, Becca
 SI 201 Museums Project'''
 
+
 import requests
 import json
 import sqlite3
@@ -101,6 +102,55 @@ def get_met_data(target_count=80):
     pass
     
     
+    ids_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
+    
+    print("Requesting MET object ID list...")
+
+    try:
+        response = requests.get(ids_url, timeout=10)
+        ids_data = response.json()
+    except Exception as e:
+        print("Error fetching object IDs from MET:", e)
+        return []
+    
+    if "objectIDs" not in ids_data:
+        print("Error: MET did not return object IDs:", ids_data)
+        return []
+    
+    required_fields = ["title", "artistDisplayName", "medium", 
+                           "classification", "culture", "objectDate"]
+    object_ids = ids_data["objectIDs"]
+
+    raw_objects = []
+    count = 0
+
+    for oid in object_ids:
+        if count >= target_count:
+            break
+
+        # prevent rate limiting
+        time.sleep(0.1)
+
+        obj_url = f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{oid}"
+        try:
+            data = requests.get(obj_url, timeout=10).json()
+        except:
+            continue
+
+        # check if data is valid
+        if not all(data.get(field) for field in required_fields):
+            continue
+
+        if not all(data.get(f) for f in required_fields):
+            continue
+
+        raw_objects.append(data)
+        count += 1
+
+    print(f"Fetched {len(raw_objects)} objects from The Met API.")
+    return raw_objects
+    
+
 def insert_met_data(conn, cur, raw_data):
     for item in raw_data:
         required_fields = ["title", "artistDisplayName", "medium", 
@@ -155,6 +205,7 @@ def insert_met_data(conn, cur, raw_data):
             original_id, museum_id, title_id, artist_id,
             medium_id, classification_id, culture_id, date_id
         ))  
+
 
 def get_harvard_data(target_count=25):
     """
@@ -238,6 +289,74 @@ def get_harvard_data(target_count=25):
     return raw_objects
 
 def get_coop_data(target_count=80):
+def get_aic_data(target_count=25):
+    """
+    Fetch artwork metadata from the Art Institute of Chicago API
+
+    Returns
+    -------
+    list[dict]
+        List of normalized artwork dicts with keys:
+        objectID, title, artistDisplayName, medium,
+        classification, culture, objectDate
+    """
+
+    base_url = "https://api.artic.edu/api/v1/artworks"
+    # Use fields to keep responses small
+    params = {
+        "limit": min(target_count, 25),  # keep small for project
+        "fields": "id,title,artist_title,medium_display,classification_titles,place_of_origin,date_display"
+    }
+
+    print("Requesting Art Institute of Chicago artworks...")
+
+    try:
+        response = requests.get(base_url, params=params, timeout=10)
+        data = response.json()
+    except Exception as e:
+        print("Error fetching data from Art Institute of Chicago API:", e)
+        return []
+
+    records = data.get("data", [])
+    raw_objects = []
+
+    required_fields = ["title", "artistDisplayName", "medium",
+                       "classification", "culture", "objectDate"]
+
+    for rec in records:
+        # Normalize fields to match MET-style structure used by insert_met_data
+        classification = None
+        class_titles = rec.get("classification_titles")
+        if isinstance(class_titles, list) and class_titles:
+            classification = "; ".join(class_titles)
+        # fallback if needed
+        if not classification:
+            classification = rec.get("classification_title")
+
+        normalized = {
+            "objectID": rec.get("id"),
+            "title": rec.get("title"),
+            "artistDisplayName": rec.get("artist_title"),
+            "medium": rec.get("medium_display"),
+            "classification": classification,
+            "culture": rec.get("place_of_origin"),
+            "objectDate": rec.get("date_display"),
+        }
+
+        # Require all core fields to be non-empty
+        if not all(normalized.get(f) for f in required_fields):
+            continue
+
+        raw_objects.append(normalized)
+
+        if len(raw_objects) >= target_count:
+            break
+
+    print(f"Fetched {len(raw_objects)} objects from the Art Institute of Chicago API.")
+    return raw_objects
+
+
+def get_coop_data():
     # Placeholder for Cooper Hewitt data fetching function
     collected = []
 
@@ -264,26 +383,36 @@ def get_coop_data(target_count=80):
     return collected
         
 
+
 def main():
     conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
 
-    #create_tables(conn, cur)
+    create_tables(conn, cur)
 
     # MET example (you already have)
+    raw_met_data = get_met_data(target_count=5)
+    # MET example 
     raw_met_data = get_met_data(target_count=5)
     insert_met_data(conn, cur, raw_met_data)
 
     '''# Harvard example
     raw_harvard_data = get_harvard_data(harvard_api_key, target_count=5)
     insert_met_data(conn, cur, raw_harvard_data)
+    # Harvard example
+    raw_harvard_data = get_harvard_data(target_count=5)
+    insert_met_data(conn, cur, raw_harvard_data)
 
     raw_coop_data = get_coop_data(target_count=5)
     print(raw_coop_data)'''
 
+    # Art Institute of Chicago example
+    raw_aic_data = get_aic_data(target_count=5)
+    insert_met_data(conn, cur, raw_aic_data)
 
     conn.commit()
     conn.close()
+
 
 if __name__ == "__main__":
     main()
