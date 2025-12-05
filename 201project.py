@@ -290,16 +290,18 @@ def main():
     conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
 
-    create_tables(conn, cur)
+    #create_tables(conn, cur)
 
     # MET example (you already have)
-    raw_met_data = get_met_data(target_count=5)
+    '''raw_met_data = get_met_data(target_count=5)
     insert_met_data(conn, cur, raw_met_data)
 
     # Harvard example
     harvard_api_key = 58f23874-0244-4cb8-b162-ae364e69d3e0
     raw_harvard_data = get_harvard_data(harvard_api_key, target_count=5)
-    insert_met_data(conn, cur, raw_harvard_data)
+    insert_met_data(conn, cur, raw_harvard_data)'''
+
+
 
     conn.commit()
     conn.close()
