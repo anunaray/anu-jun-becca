@@ -203,6 +203,14 @@ def insert_met_data(conn, cur, raw_data):
             medium_id, classification_id, culture_id, date_id
         ))  
 
+def get_coop_data():
+    url = f"https://api.cooperhewitt.org/"
+
+    response = requests.get(url)
+    data = response.json()
+    print(data)
+
+
 
 def main():
     # 1. Connect to the database
