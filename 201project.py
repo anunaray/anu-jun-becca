@@ -297,7 +297,6 @@ def main():
     insert_met_data(conn, cur, raw_met_data)
 
     # Harvard example
-    harvard_api_key = 58f23874-0244-4cb8-b162-ae364e69d3e0
     raw_harvard_data = get_harvard_data(harvard_api_key, target_count=5)
     insert_met_data(conn, cur, raw_harvard_data)
 
