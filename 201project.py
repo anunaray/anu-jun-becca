@@ -8,6 +8,7 @@ import sqlite3
 import time
 import random
 
+### DATABASE SETUP ###
 def create_tables(conn, cur):
     # ---------------------------
     # Lookup Tables (store TEXT)
@@ -95,6 +96,80 @@ def create_tables(conn, cur):
 
     conn.commit()
     print("Tables created successfully!")
+
+### AIC API DATA RETRIEVAL AND INSERTION ###
+
+def get_aic_data(page):
+    ''''''
+    all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100"
+    response = requests.get(all_url)
+    data = response.json()
+    print(data['pagination'])
+    return data['data']
+
+
+def get_or_create_id(cur, conn, table, column, value):
+    # helper function to get or create an id in a lookup table
+
+    cur.execute(f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?);", (value,))
+    conn.commit()
+    cur.execute(f"SELECT id FROM {table} WHERE {column} = ?;", (value,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+    else:
+        # Fallback if something goes wrong
+        cur.execute(f"INSERT INTO {table} ({column}) VALUES (?);", (value,))
+        conn.commit()
+        return cur.lastrowid
+
+
+def insert_aic_data(conn, cur, data_dict_list):
+    """
+    Insert Art Institute of Chicago artworks into the database.
+    """
+    museum_name = "Art Institute of Chicago"
+
+    # Insert museum if it doesn't exist
+    cur.execute("INSERT OR IGNORE INTO museum (name) VALUES (?);", (museum_name,))
+    conn.commit()  # commit here to make sure it actually exists
+    cur.execute("SELECT id FROM museum WHERE name = ?;", (museum_name,))
+    museum_id = cur.fetchone()[0]
+
+     
+    '''subsections to get:
+        title
+        place_of_origin
+        artist_title
+        medium_display
+        classification_title
+        date_display
+     '''
+    for item in data_dict_list:
+        title = item.get("title", "Untitled")
+        artist = item.get("artist_title", "Unknown Artist")
+        origin = item.get("place_of_origin", "Unknown Culture")
+        medium = item.get("medium_display", "Unknown Medium")
+        classification = item.get("classification_title", "Unclassified")
+        date = item.get("date_display", "Unknown Date")
+        original_id = item.get("id")
+
+        # Get IDs from lookup tables
+        title_id = get_or_create_id(cur, conn, "titles", "title_text", title)
+        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist)
+        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin)
+        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium)
+        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification)
+        date_id = get_or_create_id(cur, conn, "dates", "date_text", date)
+
+        # Insert into artworks
+        cur.execute("""
+            INSERT OR IGNORE INTO artworks
+            (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))
+
+    conn.commit()
 
 
 def get_harvard_data(target_count=25):
@@ -283,12 +358,15 @@ def main():
 
     create_tables(conn, cur)
     # Harvard
-    raw_harvard_data = get_harvard_data(target_count=5)
+    #.praw_harvard_data = get_harvard_data(target_count=5)
     # Cooper Hewitt
-    raw_coop_data = get_coop_data(target_count=5)
+    #raw_coop_data = get_coop_data(target_count=5)
 
-
-
+    aic_lst = get_aic_data(1)
+    aic_lst.extend(get_aic_data(2))
+    aic_lst.extend(get_aic_data(3)) #getting 300 records from multiple pages of the aic db
+    insert_aic_data(conn, cur, aic_lst)
+    #print(f"the lenght of the data list is {len(aic_lst)}")
 
     conn.commit()
     conn.close()
