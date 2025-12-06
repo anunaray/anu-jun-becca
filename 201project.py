@@ -98,58 +98,21 @@ def create_tables(conn, cur):
 
 
 def get_met_data(target_count=80):
-    # 1. get all object IDs
-    pass
-    
-    
-    ids_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
-    
-    print("Requesting MET object ID list...")
-
+    # met has two endpoints: one for list of object ids, one for object details
+    obj_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
     try:
-        response = requests.get(ids_url, timeout=10)
-        ids_data = response.json()
+        response = requests.get(obj_url, timeout=10)
+        if response.status_code != 200:
+            print("Error: MET API returned status", response.status_code)
+            print("Response text:", response.text)
+            obj_ids = []
+        else:
+            obj_ids = response.json().get("objectIDs", [])
     except Exception as e:
-        print("Error fetching object IDs from MET:", e)
-        return []
-    
-    if "objectIDs" not in ids_data:
-        print("Error: MET did not return object IDs:", ids_data)
-        return []
-    
-    required_fields = ["title", "artistDisplayName", "medium", 
-                           "classification", "culture", "objectDate"]
-    object_ids = ids_data["objectIDs"]
+        print("Exception occurred while fetching MET object IDs:", e)
+        obj_ids = []
 
-    raw_objects = []
-    count = 0
-
-    for oid in object_ids:
-        if count >= target_count:
-            break
-
-        # prevent rate limiting
-        time.sleep(0.1)
-
-        obj_url = f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{oid}"
-        try:
-            data = requests.get(obj_url, timeout=10).json()
-        except:
-            continue
-
-        # check if data is valid
-        if not all(data.get(field) for field in required_fields):
-            continue
-
-        if not all(data.get(f) for f in required_fields):
-            continue
-
-        raw_objects.append(data)
-        count += 1
-
-    print(f"Fetched {len(raw_objects)} objects from The Met API.")
-    return raw_objects
-    
+    print(obj_ids[:10])  # just preview first 10 IDs
 
 def insert_met_data(conn, cur, raw_data):
     for item in raw_data:
@@ -289,6 +252,7 @@ def get_harvard_data(target_count=25):
     return raw_objects
 
 def get_coop_data(target_count=80):
+    pass
 def get_aic_data(target_count=25):
     """
     Fetch artwork metadata from the Art Institute of Chicago API
@@ -354,33 +318,6 @@ def get_aic_data(target_count=25):
 
     print(f"Fetched {len(raw_objects)} objects from the Art Institute of Chicago API.")
     return raw_objects
-
-
-def get_coop_data():
-    # Placeholder for Cooper Hewitt data fetching function
-    collected = []
-
-    while len(collected) < target_count:
-        url = "https://api.cooperhewitt.org/rest/objects"
-        try:
-            data = requests.get(url, timeout=10).json()
-        except Exception as e:
-            print("Error fetching Coopeer Hewitt data:", e)
-            break
-        
-        if "objects" not in data:
-            print("No objects found on this page.")
-            break
-
-        collected.extend(data["objects"])
-        page += 1
-        time.sleep(0.2) # prevent rate limiting
-
-        if len(collected) >= target_count:
-            break
-
-    print(f"Fetched {len(collected)} objects from Cooper Hewitt API.")
-    return collected
         
 
 
@@ -392,9 +329,8 @@ def main():
 
     # MET example (you already have)
     raw_met_data = get_met_data(target_count=5)
-    # MET example 
-    raw_met_data = get_met_data(target_count=5)
-    insert_met_data(conn, cur, raw_met_data)
+    print(raw_met_data)
+    
 
     '''# Harvard example
     raw_harvard_data = get_harvard_data(harvard_api_key, target_count=5)
@@ -404,11 +340,11 @@ def main():
     insert_met_data(conn, cur, raw_harvard_data)
 
     raw_coop_data = get_coop_data(target_count=5)
-    print(raw_coop_data)'''
+    print(raw_coop_data)
 
     # Art Institute of Chicago example
     raw_aic_data = get_aic_data(target_count=5)
-    insert_met_data(conn, cur, raw_aic_data)
+    insert_met_data(conn, cur, raw_aic_data)'''
 
     conn.commit()
     conn.close()
