@@ -5,9 +5,9 @@ SI 201 Museums Project'''
 import requests
 import json
 import sqlite3
-import time
 import matplotlib.pyplot as plt
 import pandas as pd
+import re
 
 ### DATABASE SETUP ###
 
@@ -104,7 +104,6 @@ def insert_museum (conn, cur, museum_name):
     museum_id = cur.fetchone()[0]
     return museum_id
 
-
 ### AIC API DATA RETRIEVAL AND INSERTION ###
 
 def get_aic_data(page):
@@ -112,24 +111,8 @@ def get_aic_data(page):
     all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100"
     response = requests.get(all_url)
     data = response.json()
-    #print(data['pagination'])
+    print(data['data'][0])
     return data['data']
-
-
-'''def get_or_create_id(cur, conn, table, column, value):
-    # helper function to get or create an id in a lookup table
-    
-    cur.execute(f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?);", (value,))
-    conn.commit()
-    cur.execute(f"SELECT id FROM {table} WHERE {column} = ?;", (value,))
-    row = cur.fetchone()
-    if row:
-        return row[0]
-    else:
-        # Fallback if something goes wrong
-        cur.execute(f"INSERT INTO {table} ({column}) VALUES (?);", (value,))
-        conn.commit()
-        return cur.lastrowid'''
 
 def get_or_create_id(cur, conn, table, column, value, fallback):
     """
@@ -198,9 +181,8 @@ def get_cleveland_data():
     url = "https://openaccess-api.clevelandart.org/api/artworks/"
     response = requests.get(url)
     data = response.json()
-    #print(data['data'][0].keys())
+    
     return data['data']
-
 
 def insert_cleveland_data(conn, cur, data_dict_list):
     ''' items to get
@@ -215,8 +197,37 @@ def insert_cleveland_data(conn, cur, data_dict_list):
     museum_name = "Cleveland Museum of Art"
     museum_id = insert_museum(conn, cur, museum_name)
 
-    
+    for item in data_dict_list:
+        original_id = item.get("id")
+        title = item.get("title")
+        culture_lst = item.get("culture", [])
+        culture = culture_lst[0] if culture_lst else "Unknown Culture"
+        medium = item.get("technique")
+        classification = item.get("type")
+        date = item.get("creation_date_latest")
+        
+        creators_lst = item.get("creators", [])
+        if creators_lst:
+            creator_desc = creators_lst[0].get("description", "")
+            # use regex to extract name before any comma or parenthesis
+            match = re.match(r"^([^,(]+)", creator_desc)
+            artist = match.group(1).strip() if match else "Unknown Artist"
+        else:
+            artist = "Unknown Artist"
 
+        # Get IDs from lookup tables with fallbacks to avoid NULL values
+        title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
+        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
+        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", culture, "Unknown Culture")
+        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
+        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification, "Unclassified")
+        date_id = get_or_create_id(cur, conn, "dates", "date_text", date, "Unknown Date")  
+        # Insert into artworks
+        cur.execute("""
+            INSERT OR IGNORE INTO artworks
+            (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))  
     
     #print (data_dict_list[2]["creators"][0]["description"])
     #print (data_dict_list[3]["creators"][0]["description"])
