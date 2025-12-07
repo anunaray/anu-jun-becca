@@ -232,7 +232,43 @@ def insert_cleveland_data(conn, cur, data_dict_list):
     #print (data_dict_list[2]["creators"][0]["description"])
     #print (data_dict_list[3]["creators"][0]["description"])
 
+### COOPER HEWITT MUSEUM API DATA RETRIEVAL AND INSERTION ###
 
+def get_coop_data():
+    base_url = "https://api.collection.cooperhewitt.org/rest/"
+    url = "https://api.collection.cooperhewitt.org/graphql"
+
+    query = """
+    {
+    object(
+    name: "chair",
+    material: "wood",
+    yearRange: {from: 1950, to: 1960},
+    onDisplay: true
+  ) {
+    id
+    summary
+    location
+    maker {
+      id
+      summary
+    }
+  }
+}
+"""
+
+    response = requests.post(url, json={"query": query})
+    data = response.json()
+
+    if "errors" in data:
+        print("Error:", data["errors"])
+    else:
+        print(data["data"])
+
+get_coop_data()
+
+def insert_coop_data():
+    pass
 
 ### VISUALIZATIONS ###
 def select_and_calculate_metrics(conn):
@@ -407,7 +443,7 @@ def main():
     
     conn.close()
 
-
+'''
 if __name__ == "__main__":
     main()
-    
+'''
