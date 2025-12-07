@@ -99,7 +99,7 @@ def create_tables(conn, cur):
 
 ### AIC API DATA RETRIEVAL AND INSERTION ###
 
-def get_aic_data(page):
+def get_aic_data(page): #Anu
     ''''''
     all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100"
     response = requests.get(all_url)
@@ -108,7 +108,7 @@ def get_aic_data(page):
     return data['data']
 
 
-def get_or_create_id(cur, conn, table, column, value):
+def get_or_create_id(cur, conn, table, column, value): #Anu
     # helper function to get or create an id in a lookup table
 
     cur.execute(f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?);", (value,))
@@ -124,7 +124,7 @@ def get_or_create_id(cur, conn, table, column, value):
         return cur.lastrowid
 
 
-def insert_aic_data(conn, cur, data_dict_list):
+def insert_aic_data(conn, cur, data_dict_list): #Anu
     """
     Insert Art Institute of Chicago artworks into the database.
     """
