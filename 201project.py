@@ -6,63 +6,60 @@ import requests
 import json
 import sqlite3
 import time
-import random
 import matplotlib.pyplot as plt
 import pandas as pd
 
 ### DATABASE SETUP ###
 
 def create_tables(conn, cur):
-    # ---------------------------
     # Lookup Tables (store TEXT)
-    # ---------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS museum (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE
+            name TEXT UNIQUE NOT NULL
         );
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS titles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title_text TEXT UNIQUE
+            title_text TEXT UNIQUE NOT NULL
         );
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS artists (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            artist_name TEXT UNIQUE
+            artist_name TEXT UNIQUE NOT NULL
         );
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS mediums (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            medium_text TEXT UNIQUE
+            medium_text TEXT UNIQUE NOT NULL
         );
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS classifications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            classification_text TEXT UNIQUE
+            classification_text TEXT UNIQUE NOT NULL
         );
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS cultures (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            culture_text TEXT UNIQUE
+            culture_text TEXT UNIQUE NOT NULL
         );
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS dates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date_text TEXT UNIQUE
+            date_text TEXT UNIQUE NOT NULL
         );
     """)
 
@@ -111,7 +108,7 @@ def insert_museum (conn, cur, museum_name):
 ### AIC API DATA RETRIEVAL AND INSERTION ###
 
 def get_aic_data(page):
-    ''''''
+    
     all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100"
     response = requests.get(all_url)
     data = response.json()
@@ -119,9 +116,9 @@ def get_aic_data(page):
     return data['data']
 
 
-def get_or_create_id(cur, conn, table, column, value):
+'''def get_or_create_id(cur, conn, table, column, value):
     # helper function to get or create an id in a lookup table
-
+    
     cur.execute(f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?);", (value,))
     conn.commit()
     cur.execute(f"SELECT id FROM {table} WHERE {column} = ?;", (value,))
@@ -132,8 +129,27 @@ def get_or_create_id(cur, conn, table, column, value):
         # Fallback if something goes wrong
         cur.execute(f"INSERT INTO {table} ({column}) VALUES (?);", (value,))
         conn.commit()
-        return cur.lastrowid
+        return cur.lastrowid'''
 
+def get_or_create_id(cur, conn, table, column, value, fallback):
+    """
+    Safely gets or creates a lookup-table ID.
+    Never allows NULL or empty strings into lookup tables.
+    """
+    if value is None or str(value).strip() == "":
+        value = fallback
+
+    cur.execute(
+        f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?);",
+        (value,)
+    )
+    conn.commit()
+
+    cur.execute(
+        f"SELECT id FROM {table} WHERE {column} = ?;",
+        (value,)
+    )
+    return cur.fetchone()[0]
 
 def insert_aic_data(conn, cur, data_dict_list): 
     """
@@ -151,21 +167,21 @@ def insert_aic_data(conn, cur, data_dict_list):
         date_display
      '''
     for item in data_dict_list:
-        title = item.get("title", "Untitled")
-        artist = item.get("artist_title", "Unknown Artist")
-        origin = item.get("place_of_origin", "Unknown Culture")
-        medium = item.get("medium_display", "Unknown Medium")
-        classification = item.get("classification_title", "Unclassified")
-        date = item.get("date_display", "Unknown Date")
+        title = item.get("title")
+        artist = item.get("artist_title")
+        origin = item.get("place_of_origin")
+        medium = item.get("medium_display")
+        classification = item.get("classification_title")
+        date = item.get("date_display")
         original_id = item.get("id")
 
-        # Get IDs from lookup tables
-        title_id = get_or_create_id(cur, conn, "titles", "title_text", title)
-        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist)
-        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin)
-        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium)
-        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification)
-        date_id = get_or_create_id(cur, conn, "dates", "date_text", date)
+        # Get IDs from lookup tables with fallbacks to avoid NULL values
+        title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
+        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
+        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin, "Unknown Culture")
+        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
+        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification, "Unclassified")
+        date_id = get_or_create_id(cur, conn, "dates", "date_text", date, "Unknown Date")
 
         # Insert into artworks
         cur.execute("""
@@ -198,193 +214,14 @@ def insert_cleveland_data(conn, cur, data_dict_list):
     '''
     museum_name = "Cleveland Museum of Art"
     museum_id = insert_museum(conn, cur, museum_name)
+
+    
+
     
     #print (data_dict_list[2]["creators"][0]["description"])
     #print (data_dict_list[3]["creators"][0]["description"])
 
-    
-    
 
-
-
-def get_harvard_data(target_count=25):
-    """
-    Fetch artwork metadata from the Harvard Art Museums API and normalize it
-    to match the MET schema used by insert_met_data().
-
-    Returns
-
-    list[dict]
-        List of normalized artwork dicts with keys:
-        objectID, title, artistDisplayName, medium,
-        classification, culture, objectDate
-    """
-
-    api_key = "58f23874-0244-4cb8-b162-ae364e69d3e0"
-
-    base_url = "https://api.harvardartmuseums.org/object"
-    params = {
-        "apikey": api_key,
-        "size": min(target_count, 25),   # Harvard max 100; project max 25
-        "page": 1
-    }
-
-    print("Requesting Harvard Art Museums object list...")
-
-    raw_objects = []
-    required_fields = ["title", "artistDisplayName", "medium",
-                       "classification", "culture", "objectDate"]
-
-    while len(raw_objects) < target_count:
-        try:
-            response = requests.get(base_url, params=params, timeout=10)
-            data = response.json()
-        except Exception as e:
-            print("Error fetching Harvard data:", e)
-            break
-
-        records = data.get("records", [])
-        if not records:
-            print("No more Harvard records returned.")
-            break
-
-        for rec in records:
-            # Extract artist name from "people" list if available
-            if rec.get("people"):
-                artist_name = rec["people"][0].get("name")
-            else:
-                artist_name = None
-
-            # Normalize fields to match MET structure
-            normalized = {
-                "objectID": rec.get("objectid"),
-                "title": rec.get("title"),
-                "artistDisplayName": artist_name,
-                "medium": rec.get("medium"),
-                "classification": rec.get("classification"),
-                "culture": rec.get("culture"),
-                "objectDate": rec.get("dated")
-            }
-
-            if not all(normalized.get(f) for f in required_fields):
-                continue
-
-            raw_objects.append(normalized)
-
-            if len(raw_objects) >= target_count:
-                break
-
-        # Pagination handling
-        info = data.get("info", {})
-        current_page = info.get("page")
-        total_pages = info.get("pages")
-
-        if not current_page or not total_pages or current_page >= total_pages:
-            break
-
-        params["page"] = current_page + 1
-        time.sleep(0.1)
-
-    print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
-    print(raw_objects[:2])  # preview first 2 objects
-    return raw_objects
-
-
-def get_coop_data(target_count=25):
-    """
-    Fetch artwork metadata from the Cooper Hewitt API and normalize it
-    to match the MET schema used by insert_met_data().
-
-    Returns
-    -------
-    list[dict]
-        List of normalized artwork dicts with keys:
-        objectID, title, artistDisplayName, medium,
-        classification, culture, objectDate
-    """
-
-    access_token = "d53d099f0b54183fa59f1b54475e2489"
-
-    base_url = "https://api.collection.cooperhewitt.org/rest/"
-    params = {
-        "method": "cooperhewitt.objects.getRandom",
-        "access_token": access_token,
-        "has_image": 0  # we don't *need* images for this project
-    }
-
-    print("Requesting Cooper Hewitt random objects...")
-
-    raw_objects = []
-
-    # We’ll make sure these core fields exist (the others have safe defaults).
-    required_core_fields = ["objectID", "title", "artistDisplayName", "medium", "objectDate"]
-
-    while len(raw_objects) < target_count:
-        try:
-            resp = requests.get(base_url, params=params, timeout=10)
-            data = resp.json()
-        except Exception as e:
-            print("Error fetching Cooper Hewitt data:", e)
-            break
-
-        obj = data.get("object")
-        if not obj:
-            continue
-
-        # Try to get an artist / designer name from participants or people
-        artist_name = None
-        for key in ("participants", "people"):
-            people_list = obj.get(key)
-            if isinstance(people_list, list) and people_list:
-                person = people_list[0]
-                artist_name = (
-                    person.get("person_name")
-                    or person.get("name")
-                    or person.get("display_name")
-                )
-                if artist_name:
-                    break
-
-        # Normalize to MET-style keys so insert_met_data can reuse it
-        normalized = {
-            "objectID": obj.get("id"),
-            "title": obj.get("title") or "Unknown Title",
-            "artistDisplayName": artist_name or "Unknown Artist",
-            "medium": (
-                obj.get("medium")
-                or obj.get("medium_description")
-                or "Unknown Medium"
-            ),
-            # Cooper Hewitt uses "type" for kind of object; good enough as "classification"
-            "classification": (
-                obj.get("type")
-                or obj.get("type_name")
-                or "Unknown Classification"
-            ),
-            # Rough stand-in for "culture"
-            "culture": (
-                obj.get("woe:country")
-                or obj.get("country")
-                or "Unknown Culture"
-            ),
-            # Date fields vary widely; pick whatever exists
-            "objectDate": (
-                obj.get("date")
-                or obj.get("display_date")
-                or obj.get("year_start")
-                or "Unknown Date"
-            )
-        }
-
-        # Require the core fields to be present / non-empty
-        if not all(normalized.get(f) for f in required_core_fields):
-            continue
-
-        raw_objects.append(normalized)
-        time.sleep(0.1)  # be polite to the API
-
-    print(f"Fetched {len(raw_objects)} objects from the Cooper Hewitt API.")
-    return raw_objects
 
 ### VISUALIZATIONS ###
 def select_and_calculate_metrics(conn):
@@ -535,7 +372,9 @@ def visualize_results(metrics):
     plt.close()
 
 def main():
-    conn = sqlite3.connect("artmuseum.db")
+    conn = sqlite3.connect("artmuseumV3.db")
+    #conn = sqlite3.connect("artmuseumV2.db")
+    #conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
 
     create_tables(conn, cur)
