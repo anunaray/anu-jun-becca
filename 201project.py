@@ -615,6 +615,7 @@ def plot_culture_pies(culture_data): # pie chart
         plt.pie(sizes, labels=labels, autopct="%1.1f%%")
         plt.title(f"Cultural Origins of Artworks - {museum}")
         plt.tight_layout()
+        plt.savefig(f"culturepie_{museum.replace(' ', '_')}.png")
         plt.show()
         plt.close()
 
@@ -627,6 +628,7 @@ def plot_top_artists(top_artists):
     plt.xlabel("Number of Artworks")
     plt.title("Top Artists Across All Museums")
     plt.tight_layout()
+    plt.savefig(f"top_artists.png")
     plt.show()
     plt.close()
 
@@ -640,6 +642,7 @@ def plot_top_classifications(top_classes):
     plt.xlabel("Number of Artworks")
     plt.title("Top Classifications Across All Museums")
     plt.tight_layout()
+    plt.savefig("top_classifications.png")
     plt.show()
     plt.close()
 
@@ -666,6 +669,7 @@ def plot_century_stacked_bar(century_data):
     plt.legend()
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
+    plt.savefig("century_stacked.png")
     plt.show()
     plt.close()
 
@@ -706,11 +710,11 @@ def main():
     #conn = sqlite3.connect("artmuseumV2.db")
     #conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
-    ''''
+    
     create_tables(conn, cur)
 
     #moved get_aic_data to within insert_aic_data to loop through pages
-    insert_aic_data(conn, cur, 6)
+    '''insert_aic_data(conn, cur, 6)
 
     cleveland_lst = get_cleveland_data()
     insert_cleveland_data(conn, cur, cleveland_lst)
@@ -721,8 +725,8 @@ def main():
     start_index = get_met_start_index(cur)
     met_batch = get_met_data(start_index=start_index)
     insert_met_data(conn, cur, met_batch)
-   '''
-    
+   
+    '''
     main_visualizations(conn)
 
     conn.close()
