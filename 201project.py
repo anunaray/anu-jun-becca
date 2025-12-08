@@ -1,7 +1,7 @@
 '''Anu, Jun, Becca
 SI 201 Museums Project'''
 
-
+import time
 import requests
 import json
 import sqlite3
@@ -107,11 +107,10 @@ def insert_museum (conn, cur, museum_name):
 ### AIC API DATA RETRIEVAL AND INSERTION ###
 
 def get_aic_data(page):
-    
+    print("Requesting Art Institute of Chicago artwork data...")
     all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100"
     response = requests.get(all_url)
     data = response.json()
-    print(data['data'][0])
     return data['data']
 
 def get_or_create_id(cur, conn, table, column, value, fallback):
@@ -134,10 +133,11 @@ def get_or_create_id(cur, conn, table, column, value, fallback):
     )
     return cur.fetchone()[0]
 
-def insert_aic_data(conn, cur, data_dict_list): 
+def insert_aic_data(conn, cur, data_dict_list, limit=25): 
     """
     Insert Art Institute of Chicago artworks into the database.
     """
+    print("Inserting Art Institute of Chicago artwork data into database...")
     museum_name = "Art Institute of Chicago"
     museum_id = insert_museum(conn, cur, museum_name)
 
@@ -149,7 +149,11 @@ def insert_aic_data(conn, cur, data_dict_list):
         classification_title
         date_display
      '''
+    count = 0
     for item in data_dict_list:
+        if count >= limit:
+            break  # Stop after 25 inserts
+
         title = item.get("title")
         artist = item.get("artist_title")
         origin = item.get("place_of_origin")
@@ -157,6 +161,10 @@ def insert_aic_data(conn, cur, data_dict_list):
         classification = item.get("classification_title")
         date = item.get("date_display")
         original_id = item.get("id")
+
+        cur.execute("SELECT 1 FROM artworks WHERE original_id = ? AND museum_id = ?", (original_id, museum_id))
+        if cur.fetchone():
+            continue # if already in db, skip
 
         # Get IDs from lookup tables with fallbacks to avoid NULL values
         title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
@@ -173,18 +181,322 @@ def insert_aic_data(conn, cur, data_dict_list):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))
 
+        count += 1
+
     conn.commit()
+    print(f"AIC data insertion complete - INSERTED {count} ARTWORKS")
+
+### COOPER HEWITT API DATA RETRIEVAL AND INSERTION ###
+def get_coop_data(target_count=200):
+    """
+    Fetch artwork metadata from the Cooper Hewitt API and normalize it
+    to match the MET schema used by insert_met_data().
+
+    Returns
+    -------
+    list[dict]
+        List of normalized artwork dicts with keys:
+        objectID, title, artistDisplayName, medium,
+        classification, culture, objectDate
+    """
+
+    access_token = "d53d099f0b54183fa59f1b54475e2489"
+
+    base_url = "https://api.collection.cooperhewitt.org/rest/"
+    params = {
+        "method": "cooperhewitt.objects.getOnDisplay",
+        "access_token": access_token,
+        "has_image": 0  # we don't *need* images for this project
+    }
+
+    print("Requesting Cooper Hewitt random objects...")
+
+    raw_objects = []
+
+    # We’ll make sure these core fields exist (the others have safe defaults).
+    required_core_fields = ["id", "title", "artist_title", "medium_display", "date_display"]
+
+    objects = []
+
+    try:
+        resp = requests.get(base_url, params=params, timeout=10)
+        data = resp.json()
+        objects = data.get("objects", [])
+    except Exception as e:
+        print("Error fetching Cooper Hewitt data:", e)
+
+    for obj in objects:
+        if len(raw_objects) >= target_count:
+            break
+
+        # Try to get an artist / designer name from participants or people
+        artist_name = None
+        for key in ("participants", "people"):
+            people_list = obj.get(key)
+            if isinstance(people_list, list) and people_list:
+                person = people_list[0]
+                artist_name = (
+                    person.get("person_name")
+                    or person.get("name")
+                    or person.get("display_name")
+                )
+                if artist_name:
+                    break
+
+        # Normalize to MET-style keys so insert_met_data can reuse it
+        normalized = {
+            "id": obj.get("id"),
+            "title": obj.get("title") or "Unknown Title",
+            "artist_title": artist_name or "Unknown Artist",
+            "medium_display": (
+                obj.get("medium")
+                or obj.get("medium_description")
+                or "Unknown Medium"
+            ),
+            # Cooper Hewitt uses "type" for kind of object; good enough as "classification"
+            "classification_title": (
+                obj.get("type")
+                or obj.get("type_name")
+                or "Unknown Classification"
+            ),
+            # Rough stand-in for "culture"
+            "place_of_origin": (
+                obj.get("woe:country")
+                or obj.get("country")
+                or "Unknown Culture"
+            ),
+            # Date fields vary widely; pick whatever exists
+            "date_display": (
+                obj.get("date")
+                or obj.get("display_date")
+                or obj.get("year_start")
+                or "Unknown Date"
+            )
+        }
+
+        # Require the core fields to be present / non-empty
+        if not all(normalized.get(f) for f in required_core_fields):
+            continue
+
+        raw_objects.append(normalized)
+
+    print(f"Fetched {len(raw_objects)} objects from the Cooper Hewitt API.")
+    return raw_objects
+
+def insert_coop_data(conn, cur, data_dict_list, limit=25): 
+    """
+    Insert Cooper Hewitt artworks into the database.
+    """
+    print("Inserting Cooper Hewitt artwork data into database...")
+    museum_name = "Cooper Hewitt"
+    museum_id = insert_museum(conn, cur, museum_name)
+
+    '''subsections to get:
+        title
+        place_of_origin
+        artist_title
+        medium_display
+        classification_title
+        date_display
+     '''
+    count = 0
+    for item in data_dict_list:
+        if count >= limit:
+            break  # Stop after 25 inserts
+
+        title = item.get("title")
+        artist = item.get("artist_title")
+        origin = item.get("place_of_origin")
+        medium = item.get("medium_display")
+        classification = item.get("classification_title")
+        date = item.get("date_display")
+        original_id = item.get("id")
+
+        cur.execute("SELECT 1 FROM artworks WHERE original_id = ? AND museum_id = ?", (original_id, museum_id))
+        if cur.fetchone():
+            continue # if already in db, skip
+
+        # Get IDs from lookup tables with fallbacks to avoid NULL values
+        title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
+        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
+        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin, "Unknown Culture")
+        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
+        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification, "Unclassified")
+        date_id = get_or_create_id(cur, conn, "dates", "date_text", date, "Unknown Date")
+
+        # Insert into artworks
+        cur.execute("""
+            INSERT OR IGNORE INTO artworks
+            (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))
+
+        count += 1
+
+    conn.commit()
+    print(f"Cooper Hewitt data insertion complete - INSERTED {count} ARTWORKS")
+
+### HARVARD ART MUSEUM API DATA RETRIEVAL AND INSERTION ###
+def get_harvard_data(target_count=200):
+   """
+   Fetch artwork metadata from the Harvard Art Museums API and normalize it
+   to match the MET schema used by insert_met_data().
+
+
+   Returns
+   -------
+   list[dict]
+       List of normalized artwork dicts with keys:
+       objectID, title, artistDisplayName, medium,
+       classification, culture, objectDate
+   """
+
+
+   api_key = "58f23874-0244-4cb8-b162-ae364e69d3e0"
+
+
+   base_url = "https://api.harvardartmuseums.org/object"
+   params = {
+       "apikey": api_key,
+       "size": min(target_count, 25),   # Harvard max 100; project max 25
+       "page": 1
+   }
+
+
+   print("Requesting Harvard Art Museums object list...")
+
+
+   raw_objects = []
+   required_fields = ["title", "artist_title", "medium_display",
+                      "classification_title", "place_of_origin", "date_display"]
+
+
+   while len(raw_objects) < target_count:
+       try:
+           response = requests.get(base_url, params=params, timeout=10)
+           data = response.json()
+       except Exception as e:
+           print("Error fetching Harvard data:", e)
+           break
+
+
+       records = data.get("records", [])
+       if not records:
+           print("No more Harvard records returned.")
+           break
+
+
+       for rec in records:
+           # Extract artist name from "people" list if available
+           if rec.get("people"):
+               artist_name = rec["people"][0].get("name")
+           else:
+               artist_name = None
+
+
+           # Normalize fields to match MET structure
+           normalized = {
+               "id": rec.get("objectid"),
+               "title": rec.get("title"),
+               "artist_title": artist_name,
+               "medium_display": rec.get("medium"),
+               "classification_title": rec.get("classification"),
+               "place_of_origin": rec.get("culture"),
+               "date_display": rec.get("dated")
+           }
+
+
+           if not all(normalized.get(f) for f in required_fields):
+               continue
+
+
+           raw_objects.append(normalized)
+
+
+           if len(raw_objects) >= target_count:
+               break
+
+
+       # Pagination handling
+       info = data.get("info", {})
+       current_page = info.get("page")
+       total_pages = info.get("pages")
+
+
+       if not current_page or not total_pages or current_page >= total_pages:
+           break
+
+
+       params["page"] = current_page + 1
+       time.sleep(0.1)
+
+
+   print(f"Fetched {len(raw_objects)} objects from the Harvard Art Museums API.")
+   return raw_objects
+
+def insert_harvard_data(conn, cur, data_dict_list, limit=25):
+    """
+    Insert Harvard Art Museum artworks into the database.
+    """
+    print("Inserting Harvard Art Museum artwork data into database...")
+    museum_name = "Harvard Art Museum"
+    museum_id = insert_museum(conn, cur, museum_name)
+
+    '''subsections to get:
+        title
+        place_of_origin
+        artist_title
+        medium_display
+        classification_title
+        date_display
+     '''
+    count = 0
+    for item in data_dict_list:
+        if count >= limit:
+            break 
+
+        title = item.get("title")
+        artist = item.get("artist_title")
+        origin = item.get("place_of_origin")
+        medium = item.get("medium_display")
+        classification = item.get("classification_title")
+        date = item.get("date_display")
+        original_id = item.get("id")
+
+        cur.execute("SELECT 1 FROM artworks WHERE original_id = ? AND museum_id = ?", (original_id, museum_id))
+        if cur.fetchone():
+            continue # if already in db, skip
+
+        # Get IDs from lookup tables with fallbacks to avoid NULL values
+        title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
+        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
+        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin, "Unknown Culture")
+        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
+        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification, "Unclassified")
+        date_id = get_or_create_id(cur, conn, "dates", "date_text", date, "Unknown Date")
+
+        # Insert into artworks
+        cur.execute("""
+            INSERT OR IGNORE INTO artworks
+            (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))
+        count += 1
+
+    conn.commit()
+    print(F"Harvard Art Museum data insertion complete - INSERTED {count} ARTWORKS")
 
 ### CLEVELAND MUSEUM API DATA RETRIEVAL AND INSERTION ###
 
 def get_cleveland_data():
+    print("Requesting Cleveland Museum of Art artwork data...")
     url = "https://openaccess-api.clevelandart.org/api/artworks/"
     response = requests.get(url)
     data = response.json()
     
     return data['data']
 
-def insert_cleveland_data(conn, cur, data_dict_list):
+def insert_cleveland_data(conn, cur, data_dict_list, limit = 25):
     ''' items to get
     "id" - original id
     "culture" - this is a lst in this db, get just the first item - culture
@@ -194,10 +506,16 @@ def insert_cleveland_data(conn, cur, data_dict_list):
     "creation_date_latest" - date. only get the latest date
     "creators" lst of dicts - get item 0, and then description. use regex to filter out name only
     '''
+    print("Inserting Cleveland Museum of Art artwork data into database...")
     museum_name = "Cleveland Museum of Art"
     museum_id = insert_museum(conn, cur, museum_name)
 
+    count = 0
+
     for item in data_dict_list:
+        if count >= limit:
+            break
+
         original_id = item.get("id")
         title = item.get("title")
         culture_lst = item.get("culture", [])
@@ -215,6 +533,10 @@ def insert_cleveland_data(conn, cur, data_dict_list):
         else:
             artist = "Unknown Artist"
 
+        cur.execute("SELECT 1 FROM artworks WHERE original_id = ? AND museum_id = ?", (original_id, museum_id))
+        if cur.fetchone():
+            continue # if already in db, skip
+
         # Get IDs from lookup tables with fallbacks to avoid NULL values
         title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
         artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
@@ -228,47 +550,14 @@ def insert_cleveland_data(conn, cur, data_dict_list):
             (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))  
+
+        count += 1
     
     #print (data_dict_list[2]["creators"][0]["description"])
     #print (data_dict_list[3]["creators"][0]["description"])
+    conn.commit()
+    print(f"Cleveland Museum of Art data insertion complete - INSERTED {count} ARTWORKS")
 
-### COOPER HEWITT MUSEUM API DATA RETRIEVAL AND INSERTION ###
-
-def get_coop_data():
-    base_url = "https://api.collection.cooperhewitt.org/rest/"
-    url = "https://api.collection.cooperhewitt.org/graphql"
-
-    query = """
-    {
-    object(
-    name: "chair",
-    material: "wood",
-    yearRange: {from: 1950, to: 1960},
-    onDisplay: true
-  ) {
-    id
-    summary
-    location
-    maker {
-      id
-      summary
-    }
-  }
-}
-"""
-
-    response = requests.post(url, json={"query": query})
-    data = response.json()
-
-    if "errors" in data:
-        print("Error:", data["errors"])
-    else:
-        print(data["data"])
-
-get_coop_data()
-
-def insert_coop_data():
-    pass
 
 ### VISUALIZATIONS ###
 def select_and_calculate_metrics(conn):
@@ -419,7 +708,8 @@ def visualize_results(metrics):
     plt.close()
 
 def main():
-    conn = sqlite3.connect("artmuseumV3.db")
+    conn = sqlite3.connect("artmuseumV4.db")
+    #conn = sqlite3.connect("artmuseumV3.db")
     #conn = sqlite3.connect("artmuseumV2.db")
     #conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
@@ -427,23 +717,26 @@ def main():
     create_tables(conn, cur)
 
     aic_lst = get_aic_data(1)
-    aic_lst.extend(get_aic_data(2))
-    aic_lst.extend(get_aic_data(3)) #getting 300 records from multiple pages of the aic db
+    #aic_lst.extend(get_aic_data(2))
+    #aic_lst.extend(get_aic_data(3)) #getting 300 records from multiple pages of the aic db
     insert_aic_data(conn, cur, aic_lst)
     #print(f"the lenght of the data list is {len(aic_lst)}")
 
     cleveland_lst = get_cleveland_data()
     insert_cleveland_data(conn, cur, cleveland_lst)
 
-    conn.commit()
+    coop_lst = get_coop_data()
+    insert_coop_data(conn, cur, coop_lst)
+
+    harvard_lst = get_harvard_data()
+    insert_harvard_data(conn, cur, harvard_lst)
     # Run metrics + visualizations
 
-    #metrics = select_and_calculate_metrics(conn)
-    #visualize_results(metrics)
+    metrics = select_and_calculate_metrics(conn)
+    visualize_results(metrics)
     
     conn.close()
 
-'''
+
 if __name__ == "__main__":
     main()
-'''
