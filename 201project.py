@@ -133,7 +133,7 @@ def get_or_create_id(cur, conn, table, column, value, fallback):
     )
     return cur.fetchone()[0]
 
-def insert_aic_data(conn, cur, data_dict_list, limit=25): 
+def insert_aic_data(conn, cur, pages, limit=25): 
     """
     Insert Art Institute of Chicago artworks into the database.
     """
@@ -141,47 +141,51 @@ def insert_aic_data(conn, cur, data_dict_list, limit=25):
     museum_name = "Art Institute of Chicago"
     museum_id = insert_museum(conn, cur, museum_name)
 
-    '''subsections to get:
+    count = 0
+    for i in range(pages):
+        data_dict_list = get_aic_data(i)
+        if count >= limit:
+                break  # Stop after 25 inserts - outer loop
+        '''subsections to get:
         title
         place_of_origin
         artist_title
         medium_display
         classification_title
         date_display
-     '''
-    count = 0
-    for item in data_dict_list:
-        if count >= limit:
-            break  # Stop after 25 inserts
+        '''
+        for item in data_dict_list:
+            if count >= limit:
+                break  # Stop after 25 inserts - inner loop
 
-        title = item.get("title")
-        artist = item.get("artist_title")
-        origin = item.get("place_of_origin")
-        medium = item.get("medium_display")
-        classification = item.get("classification_title")
-        date = item.get("date_display")
-        original_id = item.get("id")
+            title = item.get("title")
+            artist = item.get("artist_title")
+            origin = item.get("place_of_origin")
+            medium = item.get("medium_display")
+            classification = item.get("classification_title")
+            date = item.get("date_display")
+            original_id = item.get("id")
 
-        cur.execute("SELECT 1 FROM artworks WHERE original_id = ? AND museum_id = ?", (original_id, museum_id))
-        if cur.fetchone():
-            continue # if already in db, skip
+            cur.execute("SELECT 1 FROM artworks WHERE original_id = ? AND museum_id = ?", (original_id, museum_id))
+            if cur.fetchone():
+                continue # if already in db, skip
 
-        # Get IDs from lookup tables with fallbacks to avoid NULL values
-        title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
-        artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
-        culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin, "Unknown Culture")
-        medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
-        classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification, "Unclassified")
-        date_id = get_or_create_id(cur, conn, "dates", "date_text", date, "Unknown Date")
+            # Get IDs from lookup tables with fallbacks to avoid NULL values
+            title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
+            artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
+            culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin, "Unknown Culture")
+            medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
+            classification_id = get_or_create_id(cur, conn, "classifications", "classification_text", classification, "Unclassified")
+            date_id = get_or_create_id(cur, conn, "dates", "date_text", date, "Unknown Date")
 
-        # Insert into artworks
-        cur.execute("""
-            INSERT OR IGNORE INTO artworks
-            (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))
+            # Insert into artworks
+            cur.execute("""
+                INSERT OR IGNORE INTO artworks
+                (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """, (original_id, museum_id, title_id, artist_id, medium_id, classification_id, culture_id, date_id))
 
-        count += 1
+            count += 1
 
     conn.commit()
     print(f"AIC data insertion complete - INSERTED {count} ARTWORKS")
@@ -337,11 +341,10 @@ def insert_coop_data(conn, cur, data_dict_list, limit=25):
     print(f"Cooper Hewitt data insertion complete - INSERTED {count} ARTWORKS")
 
 ### HARVARD ART MUSEUM API DATA RETRIEVAL AND INSERTION ###
-def get_harvard_data(target_count=200):
+def get_harvard_data(target_count=600):
    """
    Fetch artwork metadata from the Harvard Art Museums API and normalize it
    to match the MET schema used by insert_met_data().
-
 
    Returns
    -------
@@ -358,7 +361,7 @@ def get_harvard_data(target_count=200):
    base_url = "https://api.harvardartmuseums.org/object"
    params = {
        "apikey": api_key,
-       "size": min(target_count, 25),   # Harvard max 100; project max 25
+       "size": min(target_count, 25),   # harvard max 100; project max 25
        "page": 1
    }
 
@@ -716,11 +719,8 @@ def main():
 
     create_tables(conn, cur)
 
-    aic_lst = get_aic_data(1)
-    #aic_lst.extend(get_aic_data(2))
-    #aic_lst.extend(get_aic_data(3)) #getting 300 records from multiple pages of the aic db
-    insert_aic_data(conn, cur, aic_lst)
-    #print(f"the lenght of the data list is {len(aic_lst)}")
+    #moved get_aic_data to within insert_aic_data to loop through pages
+    insert_aic_data(conn, cur, 6)
 
     cleveland_lst = get_cleveland_data()
     insert_cleveland_data(conn, cur, cleveland_lst)
