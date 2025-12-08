@@ -673,19 +673,6 @@ def plot_century_stacked_bar(century_data):
     plt.show()
     plt.close()
 
-def write_metrics_to_txt(culture_data, top_artists, top_classes, filename="art_metrics.txt"):
-    with open(filename, "w") as f:
-        f.write("=== Top Cultures per Museum ===\n")
-        for museum, data in culture_data.items():
-            f.write(f"{museum}:\n")
-            for culture, count in data:
-                f.write(f"  {culture}: {count}\n")
-        f.write("\n=== Top Artists ===\n")
-        for artist, count in top_artists:
-            f.write(f"{artist}: {count}\n")
-        f.write("\n=== Top Classifications ===\n")
-        for cls, count in top_classes:
-            f.write(f"{cls}: {count}\n")
 
 
 def main_visualizations(conn):
@@ -700,17 +687,17 @@ def main_visualizations(conn):
     plot_top_artists(top_artists)
     plot_top_classifications(top_classes)
     plot_century_stacked_bar(century_stacked)
-    write_metrics_to_txt(culture_data, top_artists, top_classes, century_stacked)
-
-
+    
+    
 def main():
+    
     conn = sqlite3.connect("artmuseumV5.db")
     #conn = sqlite3.connect("artmuseumV4.db")
     #conn = sqlite3.connect("artmuseumV3.db")
     #conn = sqlite3.connect("artmuseumV2.db")
     #conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
-    
+    '''
     create_tables(conn, cur)
 
     #moved get_aic_data to within insert_aic_data to loop through pages
@@ -725,7 +712,7 @@ def main():
     start_index = get_met_start_index(cur)
     met_batch = get_met_data(start_index=start_index)
     insert_met_data(conn, cur, met_batch)
-   
+   '''
     
     main_visualizations(conn)
 
