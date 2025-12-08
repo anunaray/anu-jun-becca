@@ -673,19 +673,38 @@ def plot_century_stacked_bar(century_data):
     plt.show()
     plt.close()
 
-def write_metrics_to_txt(culture_data, top_artists, top_classes, filename="art_metrics.txt"):
-    with open(filename, "w") as f:
-        f.write("=== Top Cultures per Museum ===\n")
+def write_metrics_to_txt(culture_data, top_artists, top_classes, century_data, filename="art_metrics.txt"):
+    """
+    Write the calculated metrics (actual numbers) to a text file.
+    """
+    with open(filename, "w", encoding="utf-8") as f:
+        # Top cultures per museum
+        f.write("TOP CULTURES PER MUSEUM\n")
         for museum, data in culture_data.items():
-            f.write(f"{museum}:\n")
+            f.write(f"{museum}\n")
             for culture, count in data:
-                f.write(f"  {culture}: {count}\n")
-        f.write("\n=== Top Artists ===\n")
+                f.write(f"{culture}: {count}\n")
+            f.write("\n")
+
+        # Top artists overall
+        f.write("TOP ARTISTS (ALL MUSEUMS)\n")
         for artist, count in top_artists:
             f.write(f"{artist}: {count}\n")
-        f.write("\n=== Top Classifications ===\n")
+        f.write("\n")
+
+        # Top classifications overall
+        f.write("TOP CLASSIFICATIONS (ALL MUSEUMS)\n")
         for cls, count in top_classes:
             f.write(f"{cls}: {count}\n")
+        f.write("\n")
+
+        # Century distribution per museum
+        f.write("CENTURY DISTRIBUTION PER MUSEUM\n")
+        for museum, centuries in century_data.items():
+            f.write(f"{museum}\n")
+            for century_label, count in sorted(centuries.items()):
+                f.write(f"{century_label}: {count}\n")
+            f.write("\n")
 
 
 def main_visualizations(conn):
