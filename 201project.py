@@ -673,7 +673,38 @@ def plot_century_stacked_bar(century_data):
     plt.show()
     plt.close()
 
+def write_metrics_to_txt(culture_data, top_artists, top_classes, century_data, filename="art_metrics.txt"):
+    """
+    Write the calculated metrics (actual numbers) to a text file.
+    """
+    with open(filename, "w", encoding="utf-8") as f:
+        # Top cultures per museum
+        f.write("TOP CULTURES PER MUSEUM\n")
+        for museum, data in culture_data.items():
+            f.write(f"{museum}\n")
+            for culture, count in data:
+                f.write(f"{culture}: {count}\n")
+            f.write("\n")
 
+        # Top artists overall
+        f.write("TOP ARTISTS (ALL MUSEUMS)\n")
+        for artist, count in top_artists:
+            f.write(f"{artist}: {count}\n")
+        f.write("\n")
+
+        # Top classifications overall
+        f.write("TOP CLASSIFICATIONS (ALL MUSEUMS)\n")
+        for cls, count in top_classes:
+            f.write(f"{cls}: {count}\n")
+        f.write("\n")
+
+        # Century distribution per museum
+        f.write("CENTURY DISTRIBUTION PER MUSEUM\n")
+        for museum, centuries in century_data.items():
+            f.write(f"{museum}\n")
+            for century_label, count in sorted(centuries.items()):
+                f.write(f"{century_label}: {count}\n")
+            f.write("\n")
 
 def main_visualizations(conn):
     rows = load_artworks_raw(conn)
@@ -687,8 +718,9 @@ def main_visualizations(conn):
     plot_top_artists(top_artists)
     plot_top_classifications(top_classes)
     plot_century_stacked_bar(century_stacked)
+    write_metrics_to_txt(culture_data, top_artists, top_classes, century_stacked)
     
-    
+
 def main():
     
     conn = sqlite3.connect("artmuseumV5.db")
@@ -697,7 +729,7 @@ def main():
     #conn = sqlite3.connect("artmuseumV2.db")
     #conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
-    '''
+    
     create_tables(conn, cur)
 
     #moved get_aic_data to within insert_aic_data to loop through pages
@@ -712,7 +744,7 @@ def main():
     start_index = get_met_start_index(cur)
     met_batch = get_met_data(start_index=start_index)
     insert_met_data(conn, cur, met_batch)
-   '''
+   
     
     main_visualizations(conn)
 
