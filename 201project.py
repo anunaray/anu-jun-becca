@@ -4,7 +4,6 @@ import requests
 import json
 import sqlite3
 import matplotlib.pyplot as plt
-import pandas as pd
 import re
 
 ### DATABASE SETUP ###
@@ -318,7 +317,7 @@ def get_harvard_data(target_count=600):
            data = response.json()
        except Exception as e:
            print("Error fetching Harvard data:", e)
-           break
+           break # we have not had any errors yet, but just in case
 
 
        records = data.get("records", [])
@@ -357,17 +356,15 @@ def get_harvard_data(target_count=600):
                break
 
 
-       # Pagination handling
+       # pagination handling
        info = data.get("info", {})
        current_page = info.get("page")
        total_pages = info.get("pages")
 
-
        if not current_page or not total_pages or current_page >= total_pages:
            break
 
-
-       params["page"] = current_page + 1
+       params["page"] = current_page + 1 #looping through multiple pages till we hit target count
        time.sleep(0.1)
 
 
@@ -498,212 +495,209 @@ def insert_cleveland_data(conn, cur, data_dict_list, limit=25):
     conn.commit()
     print(f"Cleveland Museum of Art data insertion complete - INSERTED {count} ARTWORKS")
 
+### CALCULATIONS ###
 
-### VISUALIZATIONS ###
-def select_and_calculate_metrics(conn):
-    """
-    Pull data from SQLite and compute comparative metrics:
-    - medium distribution per museum
-    - cultural/geographic distribution per museum
-    - simple period distribution (by century) per museum
-
-    Returns:
-        dict[str, pd.DataFrame]
-    """
+def load_artworks_raw(conn):
     cur = conn.cursor()
-
-    # Join everything into one wide table
-    query = """
+    cur.execute("""
         SELECT
-            m.name AS museum_name,
-            t.title_text AS title,
-            a2.artist_name AS artist,
-            md.medium_text AS medium,
-            cl.classification_text AS classification,
-            c.culture_text AS culture,
-            d.date_text AS date_text
+            m.name,
+            cl.classification_text,
+            c.culture_text,
+            a2.artist_name,
+            d.date_text
         FROM artworks aw
         JOIN museum m ON aw.museum_id = m.id
-        JOIN titles t ON aw.title_id = t.id
-        JOIN artists a2 ON aw.artist_id = a2.id
-        JOIN mediums md ON aw.medium_id = md.id
         JOIN classifications cl ON aw.classification_id = cl.id
         JOIN cultures c ON aw.culture_id = c.id
+        JOIN artists a2 ON aw.artist_id = a2.id
         JOIN dates d ON aw.date_id = d.id;
-    """
+    """)
+    return cur.fetchall() #each row is returned as a tuple
 
-    df = pd.read_sql_query(query, conn)
+def normalize(text):
+    if text is None:
+        return "Unknown"
+    text = text.strip()
+    return text.title() if text else "Unknown"
 
+def calculate_culture_distribution(rows, top_n=8):
+    data = {}
 
-    df["classification"] = (
-    df["classification"]
-    .str.strip()
-    .str.title()
-)
-    # Medium distribution
-    classification_dist = (
-        df.groupby(["museum_name", "classification"])
-        .size()
-        .reset_index(name="count")
-    )
+    for museum, _, culture, _, _ in rows: # ignoring values we dont need
+        museum = normalize(museum)
+        culture = normalize(culture)
+
+        if museum not in data:
+            data[museum] = {}
+        
+        if culture not in data[museum]:
+            data[museum][culture] = 0
+        data[museum][culture] += 1
     
+    # keep only top N per museum
 
-    # Culture distribution
-    culture_dist = (
-        df.groupby(["museum_name", "culture"])
-        .size()
-        .reset_index(name="count")
-    )
+    result = {}
+    for museum, culture_counts, in data.items():
+        sorted_items = sorted(
+            culture_counts.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        result[museum] = sorted_items[:top_n]
+    
+    return result
 
-    # imple "century" extraction from date_text
-    def extract_century(date_str):
-        # crude but OK for this class: look for a 4-digit year and bucket it
-        import re
-        match = re.search(r"(\d{4})", date_str or "")
-        if not match:
-            return "Unknown"
-        year = int(match.group(1))
-        century = (year - 1) // 100 + 1
-        return f"{century}th c."
+def calculate_top_artists(rows, top_n=8):
+    artist_counts = {}
 
-    df["century"] = df["date_text"].apply(extract_century)
+    for _, _, _, artist, _ in rows:
+        a = normalize(artist)
+        artist_counts[a] = artist_counts.get(a, 0) + 1
 
-    century_dist = (
-        df.groupby(["museum_name", "century"])
-        .size()
-        .reset_index(name="count")
-    )
+    return sorted(
+        artist_counts.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:top_n]
 
-    return {
-        "classification_dist": classification_dist,
-        "culture_dist": culture_dist,
-        "century_dist": century_dist,
-        "full_df": df
-    }
-'''
-def visualize_results(metrics):
-    classification_dist = metrics["classification_dist"]
-    culture_dist = metrics["culture_dist"]
-    century_dist = metrics["century_dist"]
+def calculate_top_classifications(rows, top_n=8):
+    total_counts = {}
 
-    # 1. Medium Distribution Across Museums (bar chart)
-    plt.figure(figsize=(10, 6))
-    museums = classification_dist["museum_name"].unique()
-    classifications = classification_dist["classification"].unique()
+    for _, classification, _, _, _ in rows:
+        c= normalize(classification)
+        total_counts[c] = total_counts.get(c, 0) +1
 
-    # simple grouped bars
-    x = range(len(classifications))
-    width = 0.8 / max(len(museums), 1)  # width per museum
+    top_classes = sorted(
+        total_counts.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:top_n]
 
-    for i, museum in enumerate(museums):
-        subset = classification_dist[classification_dist["museum_name"] == museum]
-        counts = []
-        for m in classifications:
-            row = subset[subset["classification"] == m]
-            counts.append(int(row["count"].iloc[0]) if not row.empty else 0)
-        offset = [xi + i * width for xi in x]
-        plt.bar(offset, counts, width=width, label=museum)
+    return top_classes
 
-    plt.xticks([xi + width * (len(museums) - 1) / 2 for xi in x], classifications, rotation=45, ha="right")
-    plt.ylabel("Number of Artworks")
-    plt.title("Classification Distribution Across Museums")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig("classification_distribution.png")
-    plt.show()
-    plt.close()
+def calculate_century_distribution(rows):
+    #returns a nested dict of museum: {century_label: count}}
 
-    # 2. Cultural Regions of Art Across Museums (pie chart per museum)
-    for museum in museums:
-        subset = culture_dist[culture_dist["museum_name"] == museum]
-        top = subset.sort_values("count", ascending=False).head(8)  # top 8 cultures
-        labels = top["culture"]
-        sizes = top["count"]
+    century_data = {}
 
-        plt.figure(figsize=(6, 6))
+    for museum, _, _, _, date_text in rows:
+        museum = normalize(museum)
+        date_text = normalize(date_text)
+
+        # get a 4-digit year from the string
+        match = re.search(r'(\d{4})', date_text) # using regex to extract just the year
+        if match:
+            year = int(match.group(1))
+            century = (year - 1) // 100 + 1
+            century_label = f"{century}th c." # figure out the century from the year
+        else:
+            century_label = "Unknown"
+
+        if museum not in century_data:
+            century_data[museum] = {}
+
+        if century_label not in century_data[museum]:
+            century_data[museum][century_label] = 0
+
+        century_data[museum][century_label] += 1
+
+    return century_data
+
+### VISUALIZATIONS ###
+
+def plot_culture_pies(culture_data): # pie chart
+    for museum, data in culture_data.items():
+        labels = [x[0] for x in data]
+        sizes = [x[1] for x in data]
+
+        plt.figure(figsize=(6,6))
         plt.pie(sizes, labels=labels, autopct="%1.1f%%")
-        plt.title(f"Cultural Origins for {museum}")
+        plt.title(f"Cultural Origins of Artworks - {museum}")
         plt.tight_layout()
-        plt.savefig(f"culture_pie_{museum.replace(' ', '_')}.png")
         plt.show()
         plt.close()
 
-    # 3. Artworks by Century (stacked bar chart)
-    plt.figure(figsize=(10, 6))
-    centuries = century_dist["century"].unique()
-    centuries_sorted = sorted(centuries)  # rough ordering
+def plot_top_artists(top_artists):
+    names = [x[0] for x in top_artists]
+    counts = [x[1] for x in top_artists]
 
-    bottom = [0] * len(centuries_sorted)
+    plt.figure(figsize=(10,6))
+    plt.barh(names[::-1], counts[::-1])
+    plt.xlabel("Number of Artworks")
+    plt.title("Top Artists Across All Museums")
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+def plot_top_classifications(top_classes):
+    
+    names = [x[0] for x in top_classes]
+    counts = [x[1] for x in top_classes]
+
+    plt.figure(figsize=(10,6))
+    plt.barh(names[::-1], counts[::-1])
+    plt.xlabel("Number of Artworks")
+    plt.title("Top Classifications Across All Museums")
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+def plot_century_stacked_bar(century_data):
+    # get all unique centuries across all museums for consistent x-axis
+    all_centuries = set()
+    for counts in century_data.values():
+        all_centuries.update(counts.keys())
+    all_centuries = sorted(all_centuries)  # rough chronological order
+
+    museums = list(century_data.keys())
+    bottom = [0] * len(all_centuries)
+
+    plt.figure(figsize=(12, 6))
 
     for museum in museums:
-        subset = century_dist[century_dist["museum_name"] == museum]
-        counts = []
-        for c in centuries_sorted:
-            row = subset[subset["century"] == c]
-            counts.append(int(row["count"].iloc[0]) if not row.empty else 0)
-
-        plt.bar(centuries_sorted, counts, bottom=bottom, label=museum)
-        # update bottom for stacked bars
+        counts = [century_data[museum].get(c, 0) for c in all_centuries]
+        plt.bar(all_centuries, counts, bottom=bottom, label=museum)
         bottom = [bottom[i] + counts[i] for i in range(len(counts))]
 
+    plt.xlabel("Century")
     plt.ylabel("Number of Artworks")
     plt.title("Artworks by Century Across Museums")
     plt.legend()
+    plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
-    plt.savefig("century_stacked.png")
-    plt.show()  
-    plt.close()
-'''
-
-def plot_top_classifications(metrics):
-    
-    classification_dist = metrics["classification_dist"]
-    
-    # Get top 10 classifications overall
-    top_classes = (
-        classification_dist
-        .groupby("classification")["count"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(10)
-        .index
-    )
-
-    df = classification_dist[
-        classification_dist["classification"].isin(top_classes)
-    ]
-
-    plt.figure(figsize=(10, 6))
-    museums = df["museum_name"].unique()
-    classifications = df["classification"].unique()
-
-    x = range(len(classifications))
-    width = 0.8 / max(len(museums), 1)
-
-    for i, museum in enumerate(museums):
-        subset = df[df["museum_name"] == museum]
-        counts = []
-        for c in classifications:
-            row = subset[subset["classification"] == c]
-            counts.append(int(row["count"].iloc[0]) if not row.empty else 0)
-
-        offset = [xi + i * width for xi in x]
-        plt.bar(offset, counts, width=width, label=museum)
-
-    plt.xticks(
-        [xi + width * (len(museums) - 1) / 2 for xi in x],
-        classifications,
-        rotation=45,
-        ha="right"
-    )
-
-    plt.ylabel("Number of Artworks")
-    plt.title("Top 10 Classification Distribution Across Museums")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig("classification_distribution_top10.png")
     plt.show()
     plt.close()
+
+def write_metrics_to_txt(culture_data, top_artists, top_classes, filename="art_metrics.txt"):
+    with open(filename, "w") as f:
+        f.write("=== Top Cultures per Museum ===\n")
+        for museum, data in culture_data.items():
+            f.write(f"{museum}:\n")
+            for culture, count in data:
+                f.write(f"  {culture}: {count}\n")
+        f.write("\n=== Top Artists ===\n")
+        for artist, count in top_artists:
+            f.write(f"{artist}: {count}\n")
+        f.write("\n=== Top Classifications ===\n")
+        for cls, count in top_classes:
+            f.write(f"{cls}: {count}\n")
+
+
+def main_visualizations(conn):
+    rows = load_artworks_raw(conn)
+
+    culture_data = calculate_culture_distribution(rows)
+    top_artists = calculate_top_artists(rows)
+    top_classes = calculate_top_classifications(rows)
+    century_stacked = calculate_century_distribution(rows)
+
+    plot_culture_pies(culture_data)
+    plot_top_artists(top_artists)
+    plot_top_classifications(top_classes)
+    plot_century_stacked_bar(century_stacked)
+    write_metrics_to_txt(culture_data, top_artists, top_classes, century_stacked)
+
 
 def main():
     conn = sqlite3.connect("artmuseumV5.db")
@@ -712,7 +706,7 @@ def main():
     #conn = sqlite3.connect("artmuseumV2.db")
     #conn = sqlite3.connect("artmuseum.db")
     cur = conn.cursor()
-
+    ''''
     create_tables(conn, cur)
 
     #moved get_aic_data to within insert_aic_data to loop through pages
@@ -727,12 +721,10 @@ def main():
     start_index = get_met_start_index(cur)
     met_batch = get_met_data(start_index=start_index)
     insert_met_data(conn, cur, met_batch)
-    # Run metrics + visualizations
-
-    metrics = select_and_calculate_metrics(conn)
-    plot_top_classifications(metrics)
-    #visualize_results(metrics)
+   '''
     
+    main_visualizations(conn)
+
     conn.close()
 
     
