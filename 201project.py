@@ -714,7 +714,7 @@ def main():
     create_tables(conn, cur)
 
     #moved get_aic_data to within insert_aic_data to loop through pages
-    '''insert_aic_data(conn, cur, 6)
+    insert_aic_data(conn, cur, 6)
 
     cleveland_lst = get_cleveland_data()
     insert_cleveland_data(conn, cur, cleveland_lst)
@@ -726,7 +726,7 @@ def main():
     met_batch = get_met_data(start_index=start_index)
     insert_met_data(conn, cur, met_batch)
    
-    '''
+    
     main_visualizations(conn)
 
     conn.close()
