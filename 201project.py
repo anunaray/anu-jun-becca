@@ -10,7 +10,7 @@ import re
 ### DATABASE SETUP ###
 
 def create_tables(conn, cur):
-    # Lookup Tables (store TEXT)
+    #  lookup tables
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS museum (
@@ -61,9 +61,7 @@ def create_tables(conn, cur):
         );
     """)
 
-    # ---------------------------
-    # Main Artworks Table (INT ONLY)
-    # ---------------------------
+    # main Artworks Table (INT ONLY)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS artworks (
@@ -95,7 +93,7 @@ def create_tables(conn, cur):
     conn.commit()
     print("Tables created successfully!")
 
-def insert_museum (conn, cur, museum_name):
+def insert_museum (conn, cur, museum_name): #function to insert museum names only.
     cur.execute("INSERT OR IGNORE INTO museum (name) VALUES (?);", (museum_name,))
     conn.commit()
     cur.execute("SELECT id FROM museum WHERE name = ?;", (museum_name,))
@@ -106,7 +104,7 @@ def insert_museum (conn, cur, museum_name):
 
 def get_aic_data(page):
     print("Requesting Art Institute of Chicago artwork data...")
-    all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100"
+    all_url = f"https://api.artic.edu/api/v1/artworks?page={page}&limit=100" #so that the next function can iterate through pages
     response = requests.get(all_url)
     data = response.json()
     return data['data']
@@ -117,7 +115,7 @@ def get_or_create_id(cur, conn, table, column, value, fallback):
     Never allows NULL or empty strings into lookup tables.
     """
     if value is None or str(value).strip() == "":
-        value = fallback
+        value = fallback #ensures NULL values dont accumulate in the supplementary tables. This was an issue we had in previous versions of the db
 
     cur.execute(
         f"INSERT OR IGNORE INTO {table} ({column}) VALUES (?);",
@@ -140,10 +138,10 @@ def insert_aic_data(conn, cur, pages, limit=25):
     museum_id = insert_museum(conn, cur, museum_name)
 
     count = 0
-    for i in range(pages):
+    for i in range(pages): #loop through pages that. only inserts what has not already been inserted
         data_dict_list = get_aic_data(i)
         if count >= limit:
-                break  # Stop after 25 inserts - outer loop
+                break  # stop after 25 inserts - outer loop
         '''subsections to get:
         title
         place_of_origin
@@ -154,7 +152,7 @@ def insert_aic_data(conn, cur, pages, limit=25):
         '''
         for item in data_dict_list:
             if count >= limit:
-                break  # Stop after 25 inserts - inner loop
+                break  # stop after 25 inserts - inner loop
 
             title = item.get("title")
             artist = item.get("artist_title")
@@ -169,7 +167,7 @@ def insert_aic_data(conn, cur, pages, limit=25):
                 continue # if already in db, skip
 
             # Get IDs from lookup tables with fallbacks to avoid NULL values
-            title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" )
+            title_id = get_or_create_id(cur, conn, "titles", "title_text", title, "Untitled" ) #"untitled" etc are fallbacks so that null values dont accumulate
             artist_id = get_or_create_id(cur, conn, "artists", "artist_name", artist, "Unknown Artist")
             culture_id = get_or_create_id(cur, conn, "cultures", "culture_text", origin, "Unknown Culture")
             medium_id = get_or_create_id(cur, conn, "mediums", "medium_text", medium, "Unknown Medium")
@@ -190,44 +188,44 @@ def insert_aic_data(conn, cur, pages, limit=25):
 
 ### MET MUSEUM API DATA RETRIEVAL AND INSERTION ###
 
-def get_met_start_index(cur):
+def get_met_start_index(cur): #this finds how many met museum artworks are already in the db so the next functions know where to start iterating from
     cur.execute("""
         SELECT COUNT(*) FROM artworks aw
         JOIN museum m ON aw.museum_id = m.id
         WHERE m.name = 'Metropolitan Museum of Art';
     """)
-    return cur.fetchone()[0]
+    return cur.fetchone()[0] #use this number as the start index
 
-def get_met_data(start_index=0, batch_size=25):
-    """
-    Fetch a batch of MET artworks using object IDs.
-    Returns a list of normalized artwork dicts.
-    """
+def get_met_data(start_index=0, batch_size=25): #default start index is zero, batch size is how many we want to fetch
 
-    objects_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects" #all obj ids
+    #limiting how much we fetch because of MET museum rate limitation. this is not the case with the other APIS
+    #playing it safe by only fetching what we need
+
+    objects_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects" #all obj ids - met is structured differently from the other apis
     object_url = "https://collectionapi.metmuseum.org/public/collection/v1/objects/{}" #to fetch 1 obj at a time
 
     try:
         all_ids = requests.get(objects_url, timeout=10).json()["objectIDs"]
     except Exception as e:
         print("Failed to fetch MET object IDs:", e)
-        return []
+        return [] #this was because in previous versions, we ran into many issues of rate limitation with the MET api.
+                 # just to keep things running smoothly
 
-    results = []
+    results = [] # stores all fetched data. empty at first
     idx = start_index
 
-    while len(results) < batch_size and idx < len(all_ids):
+    while len(results) < batch_size and idx < len(all_ids):  
         object_id = all_ids[idx]
-        idx += 1
+        idx += 1 #loop continues only if we havent collected 25 and we havent run out of object ids in the met database
 
         try:
-            resp = requests.get(object_url.format(object_id), timeout=10)
+            resp = requests.get(object_url.format(object_id), timeout=10) 
             data = resp.json()
         except Exception:
-            continue
+            continue #try to fetch one, but if it fails continue the loop because MET has a lot of broken records
 
         if not data.get("title"):
-            continue
+            continue #skip data with no title
 
         normalized = {
             "id": data.get("objectID"),
@@ -237,7 +235,7 @@ def get_met_data(start_index=0, batch_size=25):
             "classification_title": data.get("classification"),
             "place_of_origin": data.get("culture"),
             "date_display": data.get("objectDate")
-        }
+        } # only fetching the data we need
 
         results.append(normalized)
         time.sleep(0.1)
@@ -252,7 +250,7 @@ def insert_met_data(conn, cur, data_dict_list, limit=25):
     museum_name = "Metropolitan Museum of Art"
     museum_id = insert_museum(conn, cur, museum_name)
 
-    count = 0
+    count = 0 
     for item in data_dict_list:
         if count >= limit:
             break
@@ -285,46 +283,36 @@ def insert_met_data(conn, cur, data_dict_list, limit=25):
         count += 1
 
     conn.commit()
-    print(f"MET Museum od Art insertion complete - INSERTED {count} ARTWORKS")
+    print(f"MET Museum of Art insertion complete - INSERTED {count} ARTWORKS")
 
 
 ### HARVARD ART MUSEUM API DATA RETRIEVAL AND INSERTION ###
 
 
 def get_harvard_data(target_count=600):
-   """
-   Fetch artwork metadata from the Harvard Art Museums API and normalize it
-   to match the MET schema used by insert_met_data().
-
-   Returns
-   -------
-   list[dict]
-       List of normalized artwork dicts with keys:
-       objectID, title, artistDisplayName, medium,
-       classification, culture, objectDate
-   """
+   #harvard api just fetches the same number of data everytime
+   #the 25 count limitation is implemented in the insert function, not the get function
+   #the function pulls the same 600 every time, but only inserts 25 at a time while avoiding duplicates
 
 
-   api_key = "58f23874-0244-4cb8-b162-ae364e69d3e0"
+   api_key = "58f23874-0244-4cb8-b162-ae364e69d3e0" #harvard uses an api key
 
 
    base_url = "https://api.harvardartmuseums.org/object"
    params = {
        "apikey": api_key,
-       "size": min(target_count, 25),   # harvard max 100; project max 25
+       "size": min(target_count, 25),
        "page": 1
    }
 
-
    print("Requesting Harvard Art Museums object list...")
-
 
    raw_objects = []
    required_fields = ["title", "artist_title", "medium_display",
                       "classification_title", "place_of_origin", "date_display"]
 
 
-   while len(raw_objects) < target_count:
+   while len(raw_objects) < target_count:  
        try:
            response = requests.get(base_url, params=params, timeout=10)
            data = response.json()
@@ -336,18 +324,17 @@ def get_harvard_data(target_count=600):
        records = data.get("records", [])
        if not records:
            print("No more Harvard records returned.")
-           break
+           break #this is if all harvard records are inserted into the db and there are none left
 
 
        for rec in records:
-           # Extract artist name from "people" list if available
+           # get artist name from "people" list if available
            if rec.get("people"):
                artist_name = rec["people"][0].get("name")
            else:
                artist_name = None
 
 
-           # Normalize fields to match MET structure
            normalized = {
                "id": rec.get("objectid"),
                "title": rec.get("title"),
@@ -547,12 +534,19 @@ def select_and_calculate_metrics(conn):
 
     df = pd.read_sql_query(query, conn)
 
+
+    df["classification"] = (
+    df["classification"]
+    .str.strip()
+    .str.title()
+)
     # Medium distribution
-    medium_dist = (
-        df.groupby(["museum_name", "medium"])
+    classification_dist = (
+        df.groupby(["museum_name", "classification"])
         .size()
         .reset_index(name="count")
     )
+    
 
     # Culture distribution
     culture_dist = (
@@ -561,7 +555,7 @@ def select_and_calculate_metrics(conn):
         .reset_index(name="count")
     )
 
-    # Simple "century" extraction from date_text
+    # imple "century" extraction from date_text
     def extract_century(date_str):
         # crude but OK for this class: look for a 4-digit year and bucket it
         import re
@@ -581,41 +575,41 @@ def select_and_calculate_metrics(conn):
     )
 
     return {
-        "medium_dist": medium_dist,
+        "classification_dist": classification_dist,
         "culture_dist": culture_dist,
         "century_dist": century_dist,
         "full_df": df
     }
-
+'''
 def visualize_results(metrics):
-    medium_dist = metrics["medium_dist"]
+    classification_dist = metrics["classification_dist"]
     culture_dist = metrics["culture_dist"]
     century_dist = metrics["century_dist"]
 
     # 1. Medium Distribution Across Museums (bar chart)
     plt.figure(figsize=(10, 6))
-    museums = medium_dist["museum_name"].unique()
-    media = medium_dist["medium"].unique()
+    museums = classification_dist["museum_name"].unique()
+    classifications = classification_dist["classification"].unique()
 
     # simple grouped bars
-    x = range(len(media))
+    x = range(len(classifications))
     width = 0.8 / max(len(museums), 1)  # width per museum
 
     for i, museum in enumerate(museums):
-        subset = medium_dist[medium_dist["museum_name"] == museum]
+        subset = classification_dist[classification_dist["museum_name"] == museum]
         counts = []
-        for m in media:
-            row = subset[subset["medium"] == m]
+        for m in classifications:
+            row = subset[subset["classification"] == m]
             counts.append(int(row["count"].iloc[0]) if not row.empty else 0)
         offset = [xi + i * width for xi in x]
         plt.bar(offset, counts, width=width, label=museum)
 
-    plt.xticks([xi + width * (len(museums) - 1) / 2 for xi in x], media, rotation=45, ha="right")
+    plt.xticks([xi + width * (len(museums) - 1) / 2 for xi in x], classifications, rotation=45, ha="right")
     plt.ylabel("Number of Artworks")
-    plt.title("Medium Distribution Across Museums")
+    plt.title("Classification Distribution Across Museums")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("medium_distribution.png")
+    plt.savefig("classification_distribution.png")
     plt.show()
     plt.close()
 
@@ -659,6 +653,57 @@ def visualize_results(metrics):
     plt.savefig("century_stacked.png")
     plt.show()  
     plt.close()
+'''
+
+def plot_top_classifications(metrics):
+    
+    classification_dist = metrics["classification_dist"]
+    
+    # Get top 10 classifications overall
+    top_classes = (
+        classification_dist
+        .groupby("classification")["count"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(10)
+        .index
+    )
+
+    df = classification_dist[
+        classification_dist["classification"].isin(top_classes)
+    ]
+
+    plt.figure(figsize=(10, 6))
+    museums = df["museum_name"].unique()
+    classifications = df["classification"].unique()
+
+    x = range(len(classifications))
+    width = 0.8 / max(len(museums), 1)
+
+    for i, museum in enumerate(museums):
+        subset = df[df["museum_name"] == museum]
+        counts = []
+        for c in classifications:
+            row = subset[subset["classification"] == c]
+            counts.append(int(row["count"].iloc[0]) if not row.empty else 0)
+
+        offset = [xi + i * width for xi in x]
+        plt.bar(offset, counts, width=width, label=museum)
+
+    plt.xticks(
+        [xi + width * (len(museums) - 1) / 2 for xi in x],
+        classifications,
+        rotation=45,
+        ha="right"
+    )
+
+    plt.ylabel("Number of Artworks")
+    plt.title("Top 10 Classification Distribution Across Museums")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("classification_distribution_top10.png")
+    plt.show()
+    plt.close()
 
 def main():
     conn = sqlite3.connect("artmuseumV5.db")
@@ -685,10 +730,11 @@ def main():
     # Run metrics + visualizations
 
     metrics = select_and_calculate_metrics(conn)
-    visualize_results(metrics)
+    plot_top_classifications(metrics)
+    #visualize_results(metrics)
     
     conn.close()
 
-
+    
 if __name__ == "__main__":
     main()
