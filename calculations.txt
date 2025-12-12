@@ -1,0 +1,89 @@
+TOP CULTURES PER MUSEUM
+Art Institute Of Chicago
+  China: 37
+  Unknown Culture: 3
+  France: 2
+  Vienna: 2
+  United States: 2
+  London: 1
+  Copenhagen: 1
+  England: 1
+
+Cleveland Museum Of Art
+  America: 18
+  Netherlands: 7
+  France, 19Th Century: 5
+  France, 20Th Century: 2
+  Flanders: 2
+  Spain: 1
+  Italy, 16Th Century: 1
+  England, 18Th Century: 1
+
+Harvard Art Museum
+  Roman: 17
+  American: 14
+  Roman Provincial: 8
+  Roman Imperial: 5
+  Greek: 2
+  Roman Republican: 2
+  Chinese: 1
+  Korean: 1
+
+Metropolitan Museum Of Art
+  Unknown Culture: 21
+  Mexican: 16
+  American: 9
+  Guatemalan: 2
+  British (American Market): 2
+
+TOP ARTISTS (ALL MUSEUMS)
+Unknown Artist: 75
+John Singer Sargent: 12
+Severus Alexander: 8
+Antoninus Pius: 5
+Marcus Aurelius: 3
+Christian Gobrecht: 3
+Vincent Van Gogh: 2
+Thomas Cole: 2
+
+TOP CLASSIFICATIONS (ALL MUSEUMS)
+Unclassified: 51
+Painting: 46
+Coins: 34
+Bronze: 31
+Drawings: 13
+Vessel: 5
+Chair: 3
+Seating: 2
+
+CENTURY DISTRIBUTION PER MUSEUM
+Art Institute Of Chicago
+  11th c.: 7
+  16th c.: 2
+  17th c.: 1
+  18th c.: 2
+  19th c.: 5
+  20th c.: 4
+  21th c.: 1
+  Unknown: 28
+
+Cleveland Museum Of Art
+  15th c.: 2
+  16th c.: 4
+  17th c.: 10
+  18th c.: 4
+  19th c.: 16
+  20th c.: 13
+  Unknown: 1
+
+Harvard Art Museum
+  19th c.: 6
+  20th c.: 9
+  Unknown: 35
+
+Metropolitan Museum Of Art
+  17th c.: 3
+  18th c.: 11
+  19th c.: 24
+  20th c.: 12
+

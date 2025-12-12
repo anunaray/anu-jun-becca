@@ -1,0 +1,104 @@
+TOP CULTURES PER MUSEUM
+Art Institute Of Chicago
+United States: 108
+China: 75
+Unknown Culture: 63
+France: 34
+Japan: 22
+Germany: 20
+Italy: 11
+Poughkeepsie: 9
+
+Cleveland Museum Of Art
+America: 60
+France, 19Th Century: 28
+Netherlands: 16
+France, 18Th Century: 9
+France, 17Th Century: 8
+France, 20Th Century: 7
+Spain, 20Th Century: 6
+Italy, 17Th Century: 6
+
+Harvard Art Museum
+Roman: 253
+Roman Imperial: 45
+Roman Provincial: 24
+Greek: 24
+American: 15
+Roman Republican: 2
+French: 2
+Byzantine: 2
+
+Metropolitan Museum Of Art
+American: 227
+Unknown Culture: 75
+Mexican: 18
+British: 8
+British (American Market): 7
+Chinese: 7
+American Or British: 5
+American, Shaker: 5
+
+TOP ARTISTS (ALL MUSEUMS)
+Unknown Artist: 411
+Septimius Severus: 71
+Caracalla: 41
+Severus Alexander: 35
+Elagabalus: 33
+Jo Ractliffe: 28
+Antoninus Pius: 26
+John Singer Sargent: 15
+
+TOP CLASSIFICATIONS (ALL MUSEUMS)
+Unclassified: 429
+Coins: 353
+Painting: 217
+Sculpture: 81
+Bronze: 44
+Photography: 29
+Etching: 19
+Woodblock Print: 18
+
+CENTURY DISTRIBUTION PER MUSEUM
+Art Institute Of Chicago
+11th c.: 16
+13th c.: 2
+14th c.: 2
+15th c.: 3
+16th c.: 20
+17th c.: 6
+18th c.: 16
+19th c.: 52
+20th c.: 181
+21th c.: 31
+Unknown: 95
+
+Cleveland Museum Of Art
+10th c.: 1
+11th c.: 11
+12th c.: 7
+13th c.: 7
+14th c.: 10
+15th c.: 35
+16th c.: 27
+17th c.: 38
+18th c.: 32
+19th c.: 64
+20th c.: 89
+21th c.: 3
+30th c.: 2
+Unknown: 49
+
+Harvard Art Museum
+18th c.: 1
+19th c.: 6
+20th c.: 14
+Unknown: 354
+
+Metropolitan Museum Of Art
+17th c.: 39
+18th c.: 152
+19th c.: 149
+20th c.: 21
+Unknown: 2
+
