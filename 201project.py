@@ -1,3 +1,5 @@
+# Team soup.cereal
+# Members: Rebecca Sun, Anu Narayan, Junjin Tan
 
 import time
 import requests
