@@ -5,6 +5,14 @@ import sqlite3
 import matplotlib.pyplot as plt
 import re
 
+from calculations import (
+    load_artworks_raw,
+    calculate_culture_distribution,
+    calculate_top_artists,
+    calculate_top_classifications,
+    calculate_century_distribution
+)
+
 ### DATABASE SETUP ###
 
 def create_tables(conn, cur):
@@ -494,167 +502,7 @@ def insert_cleveland_data(conn, cur, data_dict_list, limit=25):
     conn.commit()
     print(f"Cleveland Museum of Art data insertion complete - INSERTED {count} ARTWORKS")
 
-### CALCULATIONS ###
-
-def load_artworks_raw(conn):
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            m.name,
-            cl.classification_text,
-            c.culture_text,
-            a2.artist_name,
-            d.date_text
-        FROM artworks aw
-        JOIN museum m ON aw.museum_id = m.id
-        JOIN classifications cl ON aw.classification_id = cl.id
-        JOIN cultures c ON aw.culture_id = c.id
-        JOIN artists a2 ON aw.artist_id = a2.id
-        JOIN dates d ON aw.date_id = d.id;
-    """)
-    return cur.fetchall() #each row is returned as a tuple
-
-def normalize(text):
-    if text is None:
-        return "Unknown"
-    text = text.strip()
-    return text.title() if text else "Unknown"
-
-def calculate_culture_distribution(rows, top_n=8):
-    data = {}
-
-    for museum, _, culture, _, _ in rows: # ignoring values we dont need
-        museum = normalize(museum)
-        culture = normalize(culture)
-
-        if museum not in data:
-            data[museum] = {}
-        
-        if culture not in data[museum]:
-            data[museum][culture] = 0
-        data[museum][culture] += 1
-    
-    # keep only top N per museum
-
-    result = {}
-    for museum, culture_counts, in data.items():
-        sorted_items = sorted(
-            culture_counts.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-        result[museum] = sorted_items[:top_n]
-    
-    return result
-
-def calculate_top_artists(rows, top_n=8):
-    artist_counts = {}
-
-    for _, _, _, artist, _ in rows:
-        a = normalize(artist)
-        artist_counts[a] = artist_counts.get(a, 0) + 1
-
-    return sorted(
-        artist_counts.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:top_n]
-
-def calculate_top_classifications(rows, top_n=8):
-    total_counts = {}
-
-    for _, classification, _, _, _ in rows:
-        c= normalize(classification)
-        total_counts[c] = total_counts.get(c, 0) +1
-
-    top_classes = sorted(
-        total_counts.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:top_n]
-
-    return top_classes
-
-def parse_century_from_date(date_text):
-    
-    text = date_text.lower()
-
-    # explicit century text first
-    explicit = re.search(r'(\d{1,2})(st|nd|rd|th)\s*century', text)
-    if explicit:
-        century = int(explicit.group(1))
-        if century <= 21:
-            return f"{century}th c."
-        return None
-
-    explicit_short = re.search(r'(\d{1,2})(st|nd|rd|th)\s*c\.', text)
-    if explicit_short:
-        century = int(explicit_short.group(1))
-        if century <= 21:
-            return f"{century}th c."
-        return None
-
-    # four-digit year next
-    y4 = re.search(r'(\d{4})', text)
-    if y4:
-        year = int(y4.group(1))
-        century = (year - 1) // 100 + 1
-        if century <= 21:
-            return f"{century}th c."
-        return None
-
-    # three-digit year next
-    y3 = re.search(r'(?<!\d)(\d{3})(?!\d)', text)
-    if y3:
-        year = int(y3.group(1))
-        century = (year - 1) // 100 + 1
-        return f"{century}th c."
-
-    # BCE first (negative or explicit)
-    bce = re.search(r'(\-?\d{1,4})\s*bce|(\-?\d{1,4})\s*bc', text)
-    if bce:
-        year_str = bce.group(1) or bce.group(2)
-        year = abs(int(year_str))
-        if year == 0:
-            return None
-        century = (year - 1) // 100 + 1
-        return f"{century}th c. BCE"
-
-    # CE explicit
-    ce = re.search(r'(\d{1,4})\s*ce', text)
-    if ce:
-        year = int(ce.group(1))
-        century = (year - 1) // 100 + 1
-        if century <= 21:
-            return f"{century}th c."
-        return None
-
-    # skip if nothing matches
-    return None
-
-def calculate_century_distribution(rows):
-    #returns a nested dict of museum: {century_label: count}}
-    # { museum_name : { "17th c.": count, ... } }
-
-    century_data = {}
-
-    for museum, _, _, _, date_text in rows:
-        museum = normalize(museum)
-        date_text = normalize(date_text)
-
-        century_label = parse_century_from_date(date_text)
-        if not century_label:
-            continue  # skip unknown dates entirely
-
-        if museum not in century_data:
-            century_data[museum] = {}
-
-        if century_label not in century_data[museum]:
-            century_data[museum][century_label] = 0
-
-        century_data[museum][century_label] += 1
-
-    return century_data
+### CALCULATIONS moved to calculations.py ###
 
 ### VISUALIZATIONS ###
 
@@ -726,12 +574,12 @@ def plot_century_stacked_bar(century_data):
 
     # Sort with BCE first, then ascending numeric
     def sort_key(c):
-        if "BCE" in c:
-            num = int(c.split("th")[0])
-            return (-1000 + num)  # all BCE before CE
-        else:
-            num = int(c.split("th")[0])
-            return num
+        if c == "Unknown":
+            return float("inf")
+        try:
+            return int(c.split("th")[0])
+        except ValueError:
+            return float("inf")
 
     all_centuries = sorted(all_centuries, key=sort_key)
 
